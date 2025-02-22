@@ -1,6 +1,15 @@
 import { transformShapes } from "@/lib/utils";
 import { signal, effect, computed } from "@preact/signals-react";
+import { createPersistedSignal } from "./signals";
 import type { Editor, TLShape, TLShapeId } from "tldraw";
+
+// Constants
+const SPEED = 100; // pixels per second
+export const TIMELINE_WIDTH = 5000;
+export const TIMELINE_HEIGHT = 2000;
+export const TIMELINE_CURSOR_ID = "shape:timeline-cursor" as TLShapeId;
+export const TIMELINE_BOX_ID = "shape:timeline-box" as TLShapeId;
+export const DEFAULT_DEBUG_HEIGHT = 320;
 
 // Global signals
 export const timelinePosition = signal(0);
@@ -9,6 +18,10 @@ export const isPlaying = signal(true); // Default to playing
 export const activeDocuments = signal<TLShapeId[]>([]);
 export const documents = signal<TLShape[]>([]);
 export const editor = signal<Editor | null>(null);
+export const debugPanelHeight = createPersistedSignal(
+	"debug-panel-height",
+	DEFAULT_DEBUG_HEIGHT,
+);
 
 // computed signals
 export const progress = computed(() => timelinePosition.value / TIMELINE_WIDTH);
@@ -23,12 +36,6 @@ export const markerPositions = computed(() => {
 
 // debug panel state
 export const isDebugOpen = signal(true);
-
-const SPEED = 100; // pixels per second
-export const TIMELINE_WIDTH = 5000;
-export const TIMELINE_HEIGHT = 2000;
-export const TIMELINE_CURSOR_ID = "shape:timeline-cursor" as TLShapeId;
-export const TIMELINE_BOX_ID = "shape:timeline-box" as TLShapeId;
 
 // System shape IDs to ignore in updates
 export const SYSTEM_SHAPE_IDS = [

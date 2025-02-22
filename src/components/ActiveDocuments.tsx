@@ -1,5 +1,5 @@
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, memo } from "react";
+import { useEffect, memo, useRef } from "react";
 import type { TLShape } from "@tldraw/tldraw";
 import {
 	activeDocuments,
@@ -11,15 +11,31 @@ import {
 	TIMELINE_WIDTH,
 	isPlaying,
 	markerPositions,
+	debugPanelHeight,
+	DEFAULT_DEBUG_HEIGHT,
 } from "@/store/whiteboard";
 import { cn } from "@/lib/utils";
 
 // Constants
-const MIN_HEIGHT = 32;
-const MAX_HEIGHT = 320;
-const ITEM_HEIGHT = 32;
-const HEADER_HEIGHT = 36; // Slightly taller to accommodate timeline
-const PADDING = 24;
+const MIN_HEIGHT = 120;
+const MAX_HEIGHT = 800;
+
+// Types for shape props
+interface ShapeProps {
+	w: number;
+	h: number;
+	geo?: string;
+	color?: string;
+	text?: string;
+	size?: string;
+	fill?: string;
+	dash?: string;
+	font?: string;
+	align?: string;
+	verticalAlign?: string;
+	labelColor?: string;
+	url?: string;
+}
 
 // Utilities
 const getShapeStatus = (x: number, pos: number) => {
@@ -176,6 +192,7 @@ const DebugHeader = memo(function DebugHeader({
 const ShapeItem = memo(function ShapeItem({ shape }: { shape: TLShape }) {
 	useSignals();
 	const status = getShapeStatus(shape.x, timelinePosition.value);
+	const props = shape.props as ShapeProps;
 
 	return (
 		<div
@@ -187,6 +204,11 @@ const ShapeItem = memo(function ShapeItem({ shape }: { shape: TLShape }) {
 			<div className="flex items-center gap-3">
 				<span className="text-gray-400 text-[10px] uppercase">{status}</span>
 				<span className="text-gray-300">{shape.id.slice(-8)}</span>
+				{props.text && (
+					<span className="text-gray-400 truncate max-w-[200px]">
+						"{props.text}"
+					</span>
+				)}
 			</div>
 			<div className="flex items-center gap-2 text-gray-400">
 				<span>x:{formatCoord(shape.x)}</span>
@@ -212,18 +234,13 @@ const ShapesList = memo(function ShapesList({ shapes }: { shapes: TLShape[] }) {
 
 export function ActiveDocuments() {
 	useSignals();
+	const dragRef = useRef<HTMLDivElement>(null);
+	const startHeightRef = useRef(0);
+	const startYRef = useRef(0);
 
 	const displayShapes = documents.value
 		.filter((doc) => doc.id !== TIMELINE_CURSOR_ID)
 		.sort((a, b) => a.x - b.x);
-
-	const contentHeight = Math.min(
-		MAX_HEIGHT,
-		Math.max(
-			MIN_HEIGHT,
-			HEADER_HEIGHT + displayShapes.length * ITEM_HEIGHT + PADDING,
-		),
-	);
 
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -237,13 +254,61 @@ export function ActiveDocuments() {
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, []);
 
+	useEffect(() => {
+		const handleMouseMove = (e: MouseEvent) => {
+			if (!dragRef.current?.dataset.dragging) return;
+
+			const dy = startYRef.current - e.clientY;
+			const newHeight = Math.min(
+				MAX_HEIGHT,
+				Math.max(MIN_HEIGHT, startHeightRef.current + dy),
+			);
+			debugPanelHeight.value = newHeight;
+		};
+
+		const handleMouseUp = () => {
+			if (dragRef.current) {
+				dragRef.current.dataset.dragging = "";
+			}
+			document.body.style.cursor = "";
+		};
+
+		document.addEventListener("mousemove", handleMouseMove);
+		document.addEventListener("mouseup", handleMouseUp);
+		return () => {
+			document.removeEventListener("mousemove", handleMouseMove);
+			document.removeEventListener("mouseup", handleMouseUp);
+		};
+	}, []);
+
+	const handleDragStart = (e: React.MouseEvent) => {
+		dragRef.current!.dataset.dragging = "true";
+		startHeightRef.current = debugPanelHeight.value;
+		startYRef.current = e.clientY;
+		document.body.style.cursor = "row-resize";
+	};
+
+	const handleDoubleClick = () => {
+		debugPanelHeight.value = DEFAULT_DEBUG_HEIGHT;
+	};
+
 	if (!isDebugOpen.value) return null;
 
 	return (
 		<div
-			className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700/50 z-[9999] transition-all duration-300"
-			style={{ height: `${contentHeight}px` }}
+			className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700/50 z-[9999] transition-colors"
+			style={{ height: `${debugPanelHeight.value}px` }}
 		>
+			{/* Drag handle */}
+			<div
+				ref={dragRef}
+				className="absolute -top-3 left-0 right-0 h-3 flex items-center justify-center cursor-row-resize group"
+				onMouseDown={handleDragStart}
+				onDoubleClick={handleDoubleClick}
+			>
+				<div className="w-16 h-1 rounded-full bg-gray-700/50 group-hover:bg-gray-600/50 transition-colors" />
+			</div>
+
 			<DebugHeader shapes={displayShapes} />
 			<div className="overflow-auto h-[calc(100%-36px)] p-3">
 				<ShapesList shapes={displayShapes} />
