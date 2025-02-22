@@ -1,3 +1,4 @@
+import { transformShapes } from "@/lib/utils";
 import { signal, effect } from "@preact/signals-react";
 import type { Editor, TLShape, TLShapeId } from "tldraw";
 
@@ -24,11 +25,26 @@ export const togglePlayback = () => {
 	isPlaying.value = !isPlaying.value;
 };
 
-export const updateShapes = () => {
+export const updateShapes = async () => {
 	if (!editor.value) return;
 
 	// Get all shapes from the current page
 	const allShapes = editor.value.getCurrentPageShapes();
+
+  const simpleShapes = transformShapes(allShapes);
+
+  // Send shapes to the API
+  try {
+    await fetch("/api/shapes", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(simpleShapes),
+    });
+  } catch (error) {
+    console.error("Failed to save shapes:", error);
+  }
 
 	// Update documents signal with a new array
 	const shapeArray = Array.from(allShapes);

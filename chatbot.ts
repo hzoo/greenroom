@@ -364,6 +364,11 @@ class ChatBot {
 				// Print raw response
 				this.printDebugObject("AI Response Object", response);
 
+				if (!response) {
+					this.printSystemMessage("No response from AI");
+					continue;
+				}
+
 				// Display formatted response
 				this.printAssistantMessage(response.response.content, Date.now());
 				await this.addMessage("assistant", response.response.content);

@@ -1,27 +1,32 @@
 import { serve } from "bun";
+import type { TLShape } from "tldraw";
+
+const SHAPES_FILE = "shapes.json";
 
 const server = serve({
 	routes: {
-		"/api/hello": {
+		"/api/shapes": {
 			async GET(req) {
-				return Response.json({
-					message: "Hello, world!",
-					method: "GET",
-				});
+				try {
+					const file = Bun.file(SHAPES_FILE);
+					if (await file.exists()) {
+						const shapes = await file.json();
+						return Response.json(shapes);
+					}
+					return Response.json([]);
+				} catch (error) {
+					return new Response("Error reading shapes", { status: 500 });
+				}
 			},
 			async PUT(req) {
-				return Response.json({
-					message: "Hello, world!",
-					method: "PUT",
-				});
+				try {
+					const shapes = await req.json();
+					await Bun.write(SHAPES_FILE, JSON.stringify(shapes, null, 2));
+					return Response.json({ success: true });
+				} catch (error) {
+					return new Response("Error writing shapes", { status: 500 });
+				}
 			},
-		},
-
-		"/api/hello/:name": async (req) => {
-			const name = req.params.name;
-			return Response.json({
-				message: `Hello, ${name}!`,
-			});
 		},
 	},
 

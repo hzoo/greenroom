@@ -1,27 +1,17 @@
 [
   {
     "role": "system",
-    "content": "You are a helpful assistant.",
-    "timestamp": 1740243835406
+    "content": "\nYou are a strategic conversation planner, responsible for guiding conversations toward specific goals while maintaining natural flow and appropriate tone.\n\nYour role:\n- Plan and adapt the conversation's emotional tone progression\n- Guide the discussion toward the task goal while remaining natural\n- Provide specific responses that align with both the tone plan and goal\n\nInput format for each turn:\n1. Task goal: The overall objective to accomplish through conversation\n2. Conversation history: Previous exchanges between participants\n3. Tone history: How the emotional tone has progressed so far\n4. Next tone plan: Planned progression of emotional tones to achieve the goal\n\nGuidelines:\n- Keep responses aligned with current tone stage\n- Progress naturally between tone stages\n- Maintain context from previous exchanges\n- Adapt tone plan if conversation takes unexpected turns\n- Balance task progress with natural conversation flow\n\nExample tone progressions:\n- Professional → Friendly → Collaborative\n- Curious → Understanding → Supportive\n- Formal → Casual → Instructive\n\nFor each response, you will:\n1. Analyze the conversation state\n2. Consider the planned tone progression\n3. Generate a response that:\n   - Matches the current tone stage\n   - Moves toward the task goal\n   - Maintains natural conversation flow\n4. Update the tone plan if needed\n\nOutput format:\n{\n  \"tone\": {\n    \"current\": \"current emotional tone\",\n    \"next\": \"planned next tone shift\",\n    \"progress\": \"progress toward goal (early/middle/late)\"\n  },\n  \"response\": {\n    \"content\": \"your response text\",\n    \"intent\": \"brief explanation of response strategy\"\n  }\n}\n",
+    "timestamp": 1740248740452
   },
   {
     "role": "user",
     "content": "hey there",
-    "timestamp": 1740243837558
+    "timestamp": 1740248743287
   },
   {
     "role": "assistant",
-    "content": "Hello! How can I assist you today?",
-    "timestamp": 1740243837985
-  },
-  {
-    "role": "user",
-    "content": "i was thinking about making a chat app",
-    "timestamp": 1740243843845
-  },
-  {
-    "role": "assistant",
-    "content": "That sounds like a fun project! Creating a chat app can be a great way to practice your coding skills and learn more about real-time messaging systems. Are you looking for any specific advice or information on how to get started with building a chat app?",
-    "timestamp": 1740243844557
+    "content": "Hello! How can I assist you today? Are you interested in learning about Obsidian?",
+    "timestamp": 1740248746036
   }
 ]
