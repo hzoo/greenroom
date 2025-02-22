@@ -1,5 +1,4 @@
 import { serve } from "bun";
-import type { TLShape } from "tldraw";
 
 const SHAPES_FILE = "shapes.json";
 

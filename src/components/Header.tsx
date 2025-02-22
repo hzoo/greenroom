@@ -1,6 +1,7 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import {
 	elapsedTime,
+	isDebugOpen,
 	isPlaying,
 	resetTimeline,
 	togglePlayback,
@@ -9,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 const buttonStyles =
 	"px-2 py-1 text-sm rounded-md border border-gray-200/20 hover:bg-gray-700/50 transition-colors";
+
+const formatTime = (time: number) => time.toFixed(1).padStart(4, " ");
 
 export function Header() {
 	useSignals();
@@ -28,10 +31,17 @@ export function Header() {
 				>
 					{isPlaying.value ? "Pause" : "Play"}
 				</button>
-				<div className="text-sm text-gray-400">
-					{elapsedTime.value.toFixed(1)}s
+				<div className="text-sm text-gray-400 font-mono tabular-nums">
+					{formatTime(elapsedTime.value)}s
 				</div>
 			</div>
+
+			<button
+				onClick={() => (isDebugOpen.value = !isDebugOpen.value)}
+				className={cn(buttonStyles, "text-yellow-200/70 hover:text-yellow-200")}
+			>
+				{isDebugOpen.value ? "Hide" : "Show"} Debug (⌥D)
+			</button>
 		</div>
 	);
 }

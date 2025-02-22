@@ -1,7 +1,12 @@
 import { Tldraw } from "tldraw";
 import type { Editor } from "tldraw";
 import { useSignals } from "@preact/signals-react/runtime";
-import { editor, updateShapes, createTimelineCursor } from "@/store/whiteboard";
+import {
+	editor,
+	updateShapes,
+	createTimelineCursor,
+	createInitialShapes,
+} from "@/store/whiteboard";
 
 import "tldraw/tldraw.css";
 
@@ -20,6 +25,9 @@ export function TldrawWrapper() {
 
 		// Create timeline cursor
 		createTimelineCursor();
+
+		// Create initial shapes
+		createInitialShapes(editorInstance);
 
 		// Listen for shape changes
 		editorInstance.store.listen(updateShapes);
