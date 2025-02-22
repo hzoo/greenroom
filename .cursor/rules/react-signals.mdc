@@ -1,5 +1,5 @@
 ---
-description: react files
+description: react and state management
 globs: *.tsx
 ---
 - Use Typescript
@@ -12,15 +12,15 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useSignal, useComputed, useSignalEffect } from "@preact/signals-react";
 
 // use signal at top level
-const count = signal(0);
+export const globalCount = signal(0); // signals can also be exported for reuse (global)
 function CounterValue() {
     // always add useSignals hook in components if using a signal
 	useSignals();
-	return <p>Value: {count.value}</p>;
+	return <p>Value: {coglobalCountnt.value}</p>;
 }
 
 function Counter() {
-    // use hooks for per-component signals/state
+    // use hooks for per-component signals/state (local)
 	const count = useSignal(0);
 	const double = useComputed(() => count.value * 2);
 
