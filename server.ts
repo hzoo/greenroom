@@ -3,14 +3,13 @@ import { generateTwiML, handleMediaStream } from "./src/lib/twilio";
 
 const SHAPES_FILE = "shapes.json";
 const ELEVENLABS_API_KEY = process.env.XI_API_KEY;
-const ELEVENLABS_AGENT_ID = process.env.AGENT_ID;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
 // Validate required environment variables
-if (!ELEVENLABS_API_KEY || !ELEVENLABS_AGENT_ID) {
-	console.error("Missing required ElevenLabs environment variables");
+if (!ELEVENLABS_API_KEY) {
+	console.error("XI_API_KEY is not set");
 	process.exit(1);
 }
 
