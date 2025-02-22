@@ -1,5 +1,5 @@
 import { transformShapes } from "@/lib/utils";
-import { signal, effect } from "@preact/signals-react";
+import { signal, effect, computed } from "@preact/signals-react";
 import type { Editor, TLShape, TLShapeId } from "tldraw";
 
 // Global signals
@@ -10,12 +10,23 @@ export const activeDocuments = signal<TLShapeId[]>([]);
 export const documents = signal<TLShape[]>([]);
 export const editor = signal<Editor | null>(null);
 
+// computed
+export const progress = computed(() => timelinePosition.value / TIMELINE_WIDTH);
+
 // debug panel state
 export const isDebugOpen = signal(true);
 
 const SPEED = 100; // pixels per second
-export const MAX_WIDTH = 5000;
+export const TIMELINE_WIDTH = 5000;
+export const TIMELINE_HEIGHT = 2000;
 export const TIMELINE_CURSOR_ID = "shape:timeline-cursor" as TLShapeId;
+export const TIMELINE_BOX_ID = "shape:timeline-box" as TLShapeId;
+
+// System shape IDs to ignore in updates
+export const SYSTEM_SHAPE_IDS = [
+	TIMELINE_CURSOR_ID,
+	TIMELINE_BOX_ID,
+] as readonly TLShapeId[];
 
 // Initial shape positions
 const INITIAL_SHAPES = [
@@ -41,9 +52,9 @@ export const updateShapes = async () => {
 	// Get all shapes from the current page
 	const allShapes = editor.value.getCurrentPageShapes();
 
-	// Filter out the timeline cursor
+	// Filter out system shapes (timeline cursor and box)
 	const userShapes = Array.from(allShapes).filter(
-		(shape) => shape.id !== TIMELINE_CURSOR_ID,
+		(shape) => !SYSTEM_SHAPE_IDS.includes(shape.id),
 	);
 
 	const simpleShapes = transformShapes(userShapes);
@@ -72,6 +83,32 @@ export const updateShapes = async () => {
 	activeDocuments.value = activeShapeIds;
 };
 
+// Create timeline bounding box
+export const createTimelineBox = () => {
+	if (!editor.value) return;
+
+	// Check if box already exists
+	const existingBox = editor.value.getShape(TIMELINE_BOX_ID);
+	if (existingBox) return;
+
+	editor.value.createShapes([
+		{
+			id: TIMELINE_BOX_ID,
+			type: "geo",
+			x: 0,
+			y: -TIMELINE_HEIGHT / 2,
+			props: {
+				geo: "rectangle",
+				color: "light-violet",
+				dash: "dashed",
+				size: "l",
+				w: TIMELINE_WIDTH,
+				h: TIMELINE_HEIGHT,
+			},
+		},
+	]);
+};
+
 // Create and manage timeline cursor
 export const createTimelineCursor = () => {
 	if (!editor.value) return;
@@ -92,7 +129,7 @@ export const createTimelineCursor = () => {
 				dash: "solid",
 				size: "s",
 				w: 1,
-				h: 2000,
+				h: TIMELINE_HEIGHT,
 			},
 		},
 	]);
@@ -139,7 +176,7 @@ effect(() => {
 		elapsedTime.value += deltaTime;
 
 		// Reset if we reach the end
-		if (timelinePosition.value >= MAX_WIDTH) {
+		if (timelinePosition.value >= TIMELINE_WIDTH) {
 			timelinePosition.value = 0;
 			elapsedTime.value = 0;
 		}

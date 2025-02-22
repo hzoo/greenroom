@@ -1,11 +1,12 @@
 import { Tldraw } from "tldraw";
-import type { Editor } from "tldraw";
+import type { Editor, StoreListenerFilters } from "tldraw";
 import { useSignals } from "@preact/signals-react/runtime";
 import {
 	editor,
 	updateShapes,
 	createTimelineCursor,
 	createInitialShapes,
+	createTimelineBox,
 } from "@/store/whiteboard";
 
 import "tldraw/tldraw.css";
@@ -23,14 +24,20 @@ export function TldrawWrapper() {
 			animationSpeed: 1,
 		});
 
-		// Create timeline cursor
-		createTimelineCursor();
-
 		// Create initial shapes
 		createInitialShapes(editorInstance);
 
-		// Listen for shape changes
-		editorInstance.store.listen(updateShapes);
+		// Create timeline cursor and box
+		createTimelineCursor();
+		createTimelineBox();
+
+		// Listen for shape changes with filters
+		const listenerOptions: Partial<StoreListenerFilters> = {
+			source: "user", // Only listen for user-initiated changes
+			scope: "document", // Only listen for document changes
+		};
+
+		editorInstance.store.listen(updateShapes, listenerOptions);
 	};
 
 	return (

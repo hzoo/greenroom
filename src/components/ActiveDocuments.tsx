@@ -6,7 +6,7 @@ import {
 	timelinePosition,
 	TIMELINE_CURSOR_ID,
 	isDebugOpen,
-	MAX_WIDTH,
+	progress,
 } from "@/store/whiteboard";
 import { cn } from "@/lib/utils";
 
@@ -46,9 +46,6 @@ export function ActiveDocuments() {
 		Math.max(MIN_HEIGHT, HEADER_HEIGHT + displayShapes.length * ITEM_HEIGHT),
 	);
 
-	// Calculate progress percentage
-	const progress = timelinePosition.value / MAX_WIDTH;
-
 	// Handle keyboard shortcut
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -74,8 +71,8 @@ export function ActiveDocuments() {
 					<div className="flex justify-between items-center p-1 border-b border-gray-700/50">
 						<h3 className="text-xs font-medium text-gray-400">
 							Debug View - {displayShapes.length} Shapes (
-							{activeDocuments.value.length} Active) - {formatPercent(progress)}
-							% Complete
+							{activeDocuments.value.length} Active) -{" "}
+							{formatPercent(progress.value)}% Complete
 						</h3>
 					</div>
 
