@@ -1,4 +1,4 @@
-import { WhiteboardApp } from "./components/WhiteboardApp";
+import { WhiteboardApp } from "@/components/WhiteboardApp";
 
 export function App() {
 	return <WhiteboardApp />;

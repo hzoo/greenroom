@@ -2,9 +2,7 @@
 description: react and state management
 globs: *.tsx
 ---
-- Use Typescript
-- Use Bun and Bun Shell ($`ls`) for scripts instead of Node
-- shadcn/tailwind for styles
+- tailwind v4 for styles
 - Prefer preact signals over hooks like useState (const sig = signal(0) at top level, useSignal in components)
 
 ```ts
