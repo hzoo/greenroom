@@ -1,0 +1,38 @@
+---
+description: react files
+globs: *.tsx
+---
+- Use Typescript
+- Use Bun and Bun Shell ($`ls`) for scripts instead of Node
+- shadcn/tailwind for styles
+- Prefer preact signals over hooks like useState (const sig = signal(0) at top level, useSignal in components)
+
+```ts
+import { useSignals } from "@preact/signals-react/runtime";
+import { useSignal, useComputed, useSignalEffect } from "@preact/signals-react";
+
+// use signal at top level
+const count = signal(0);
+function CounterValue() {
+    // always add useSignals hook in components if using a signal
+	useSignals();
+	return <p>Value: {count.value}</p>;
+}
+
+function Counter() {
+    // use hooks for per-component signals/state
+	const count = useSignal(0);
+	const double = useComputed(() => count.value * 2);
+
+	useSignalEffect(() => {
+		console.log(`Value: ${count.value}, value x 2 = ${double.value}`);
+	});
+
+	return (
+		<button onClick={() => count.value++}>
+			Value: {count.value}, value x 2 = {double.value}
+		</button>
+	);
+}
+```
+
