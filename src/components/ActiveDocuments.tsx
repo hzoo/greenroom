@@ -15,6 +15,7 @@ import {
 	DEFAULT_DEBUG_HEIGHT,
 } from "@/store/whiteboard";
 import { cn } from "@/lib/utils";
+import { ChatPanel } from "./ChatPanel";
 
 // Constants
 const MIN_HEIGHT = 120;
@@ -322,8 +323,13 @@ export function ActiveDocuments() {
 			</div>
 
 			<DebugHeader shapes={displayShapes} />
-			<div className="overflow-auto h-[calc(100%-36px)] p-3">
-				<ShapesList shapes={displayShapes} />
+			<div className="flex h-[calc(100%-36px)]">
+				<div className="flex-1 overflow-auto p-3">
+					<ShapesList shapes={displayShapes} />
+				</div>
+				<div className="w-3/4">
+					<ChatPanel />
+				</div>
 			</div>
 		</div>
 	);

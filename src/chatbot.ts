@@ -1,7 +1,14 @@
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
 import type { SimpleShape } from "@/lib/utils";
+import type { TLShapeId } from "tldraw";
+import {
+	SYSTEM_SHAPE_IDS,
+	timelinePosition,
+	TIMELINE_WIDTH,
+} from "@/store/whiteboard";
+// import { timelinePosition } from "@/store/whiteboard";
 
 // ANSI color codes
 const colors = {
@@ -15,33 +22,32 @@ const colors = {
 	blue: "\x1b[34m",
 };
 
-const TIMELINE_WIDTH = 5000;
-
 interface ChatMessage {
 	role: "user" | "assistant" | "system";
 	content: string;
 	timestamp: number;
 }
 
-interface ShapesData {
-	shapes: SimpleShape[];
-	timelinePosition: number;
+// Check for OpenAI API key in Vite environment variables
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+if (!OPENAI_API_KEY) {
+	throw new Error("VITE_OPENAI_API_KEY environment variable is required");
 }
 
-async function readShapesFile(): Promise<ShapesData> {
+// Configure OpenAI with the API key
+const openaiClient = createOpenAI({
+	apiKey: OPENAI_API_KEY,
+});
+
+async function readShapesFile(): Promise<SimpleShape[]> {
 	try {
-		const shapesFile = Bun.file("shapes.json");
-		if (await shapesFile.exists()) {
-			const data = await shapesFile.json();
-			return {
-				shapes: data.shapes || [],
-				timelinePosition: data.timelinePosition || 0,
-			};
-		}
+		const response = await fetch("/api/shapes");
+		const data = await response.json();
+		return data;
 	} catch (error) {
 		console.error("Error reading shapes:", error);
+		return [];
 	}
-	return { shapes: [], timelinePosition: 0 };
 }
 
 const SYSTEM_PROMPT = `
@@ -53,6 +59,7 @@ Your role:
 - Provide specific responses that align with both the current tone and planned progression
 - Monitor and respond to tone transition opportunities when they are staged
 - Dynamically adjust the tone progression plan based on recipient responses
+- Respect and adapt to driver (human operator) modifications of the tone progression
 
 Input format for each turn:
 1. Task goal: The overall objective to accomplish through conversation
@@ -60,10 +67,11 @@ Input format for each turn:
 3. Current time: How far we are into the conversation
 4. Conversation history: Previous exchanges between participants
 5. Tone history: How the emotional tone has progressed so far
-6. Planned tones: Upcoming tone shifts and their relative timing, with their staging status:
+6. Planned tones: Upcoming tone shifts and their relative timing, with their staging status and modification state:
    - staged_within_threshold: The tone is ready for transition in the next response
    - future: The tone is planned but not yet ready for transition
    - past: The tone has already been used
+   - modified: The tone's timing/position has been manually adjusted by the driver
 
 Guidelines:
 - Keep responses aligned with current tone stage
@@ -79,11 +87,16 @@ Guidelines:
 - Maintain context from previous exchanges
 - Adapt timing if conversation pace differs from expected
 - Balance task progress with natural conversation flow
+- Respect driver modifications:
+  * Never change the timing of tones that have been manually positioned
+  * Adapt your responses to fit modified tone timings
+  * Only suggest new tone positions for unmodified tones
 - Adjust tone progression plan when:
   * Recipient shows resistance to current tone
   * Conversation takes unexpected turns
   * Certain tones prove more/less effective
   * Progress is faster/slower than expected
+  * Driver has modified tone positions
 
 Example tone progressions with timing (for different durations):
 3-minute conversation:
@@ -99,13 +112,18 @@ For each response, you will:
 1. Analyze the conversation state and timing
 2. Consider the planned tone progression relative to total duration
 3. Check if any upcoming tones are staged_within_threshold
-4. Evaluate if the tone progression plan needs adjustment based on recipient responses
-5. Generate a response that:
+4. Check which tones have been modified by the driver
+5. Evaluate if the tone progression plan needs adjustment based on:
+   - Recipient responses
+   - Driver modifications
+   - Conversation progress
+6. Generate a response that:
    - Matches the current tone stage
    - Moves toward the task goal at an appropriate pace for the duration
    - Maintains natural conversation flow
    - Transitions to a new tone if it's staged and appropriate
-6. Update timing estimates and progression plan if needed
+   - Respects driver-modified tone positions
+7. Update timing estimates and progression plan if needed, preserving driver modifications
 
 Output format:
 {
@@ -193,14 +211,15 @@ async function formatContext(context: Context): Promise<string> {
 		})
 		.join("\n");
 
-	// Read shapes from shapes.json to get staging status
-	const { shapes: shapeTones } = await readShapesFile();
+	// Read shapes from shapes.json to get staging status and modification state
+	const shapeTones = await readShapesFile();
 
 	const formattedTonePlan = context.nextTonePlan
 		.map((t) => {
 			// Find corresponding shape to get staging status and timing
 			const shape = shapeTones.find((s) => s.text === t.tone);
 			const status = shape?.status || "future";
+			const isModified = shape?.isModified || false;
 
 			// Convert proportion to minutes based on total duration
 			const timeInMinutes = shape?.proportion_in_timeline
@@ -209,12 +228,13 @@ async function formatContext(context: Context): Promise<string> {
 
 			const statusIndicator =
 				status === "staged_within_threshold" ? " (STAGED)" : "";
+			const modifiedIndicator = isModified ? " (DRIVER MODIFIED)" : "";
 			const timeDisplay =
 				shape?.proportion_in_timeline !== undefined
 					? `at ${timeInMinutes}min (${(shape.proportion_in_timeline * 100).toFixed(1)}% through conversation)`
 					: `at ${timeInMinutes}min`;
 
-			return `- ${t.tone} (${timeDisplay})${statusIndicator}`;
+			return `- ${t.tone} (${timeDisplay})${statusIndicator}${modifiedIndicator}`;
 		})
 		.join("\n");
 
@@ -238,7 +258,6 @@ ${formattedTonePlan}
 }
 
 class ChatBot {
-	private historyFile: string;
 	private history: ChatMessage[] = [];
 	private systemPrompt: string;
 	private currentToneIndex = 0;
@@ -257,7 +276,6 @@ class ChatBot {
 	private durationMinutes: number;
 
 	constructor(
-		historyPath = ".chat_history.json",
 		systemPrompt = SYSTEM_PROMPT,
 		private toneDictionary = [
 			"professional",
@@ -280,53 +298,143 @@ class ChatBot {
 			"collaborative",
 			"instructive",
 		],
-		durationMinutes = 15, // Default 15 minutes, can be as short as 1 or as long as 30
+		durationMinutes = 15,
 	) {
-		const apiKey = process.env.OPENAI_API_KEY;
-		if (!apiKey) {
-			throw new Error("OPENAI_API_KEY environment variable is required");
-		}
-
 		if (durationMinutes < 1 || durationMinutes > 30) {
 			throw new Error("Duration must be between 1 and 30 minutes");
 		}
 
 		this.durationMinutes = durationMinutes;
-		this.historyFile = historyPath;
 		this.systemPrompt = systemPrompt;
 
 		// Initialize the context with default values
 		this.context.task.goal = this.task;
 		this.context.task.duration = this.durationMinutes;
-
-		// Initialize asynchronously
-		this.initialize();
 	}
 
-	private async initialize() {
-		await this.loadHistory();
+	public async initialize() {
+		await this.generateInitialTonePlan();
 		await this.updateContext();
 	}
 
-	private async loadHistory() {
-		try {
-			const historyFile = Bun.file(this.historyFile);
-			if (await historyFile.exists()) {
-				const content = await historyFile.text();
-				this.history = JSON.parse(content) || [];
+	public async addMessage(
+		role: "user" | "assistant" | "system",
+		content: string,
+	) {
+		const message: ChatMessage = {
+			role,
+			content,
+			timestamp: Date.now(),
+		};
+		this.history.push(message);
+
+		// Update tone history for assistant messages
+		if (role === "assistant") {
+			try {
+				const parsed = TONE_SCHEMA.parse(JSON.parse(content));
+				this.toneHistory.push({
+					tone: parsed.tone.current,
+					timestamp: message.timestamp,
+				});
+
+				// Find the next planned tone in the progression
+				const nextTone = parsed.tone.progression.find(
+					(t) => t.status === "planned",
+				);
+
+				// Update tone progression if needed
+				if (
+					nextTone &&
+					(nextTone.ready_for_transition || parsed.tone.progress === "late") &&
+					this.currentToneIndex < this.initialToneProgression.length - 1
+				) {
+					this.currentToneIndex++;
+				}
+			} catch (error) {
+				// If message isn't in the expected format, maintain current tone
+				this.toneHistory.push({
+					tone: this.initialToneProgression[this.currentToneIndex],
+					timestamp: message.timestamp,
+				});
 			}
+		}
+
+		// Update context
+		await this.updateContext();
+	}
+
+	public getHistory(): ChatMessage[] {
+		return this.history;
+	}
+
+	public async cleanup() {
+		// No cleanup needed in browser environment
+	}
+
+	private async updateWhiteboardShapes(response: z.infer<typeof TONE_SCHEMA>) {
+		try {
+			// Read current shapes to preserve system shapes
+			const currentShapes = await readShapesFile();
+
+			// Filter out system shapes from current shapes using SYSTEM_SHAPE_IDS
+			const systemShapes = currentShapes.filter((shape) =>
+				SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId),
+			);
+
+			// Calculate base positions for each tone in the progression
+			const tonePositions = response.tone.progression.map((tone, index) => {
+				// Convert timing to x position
+				const x = (tone.timing / this.durationMinutes) * TIMELINE_WIDTH;
+				// Add some vertical scatter
+				const y = Math.random() * 400 - 200; // Random y between -200 and 200
+
+				return {
+					id: `tone-${index}`,
+					x,
+					y,
+					text: tone.tone,
+					type: "tone" as const,
+					status: tone.status,
+					proportion_in_timeline: tone.timing / this.durationMinutes,
+				};
+			});
+
+			// Combine tone positions with system shapes
+			const allShapes = [...systemShapes, ...tonePositions];
+
+			// Save the shapes to the shapes.json file
+			await fetch("/api/shapes", {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(allShapes),
+			});
 		} catch (error) {
-			console.error("Error loading chat history:", error);
-			this.history = [];
+			console.error("Error updating whiteboard shapes:", error);
 		}
 	}
 
-	private async saveHistory() {
-		try {
-			await Bun.write(this.historyFile, JSON.stringify(this.history, null, 2));
-		} catch (error) {
-			console.error("Error saving chat history:", error);
+	public async getAIResponse(): Promise<
+		z.infer<typeof TONE_SCHEMA> | undefined
+	> {
+		const messages = await this.formatMessagesForAI();
+
+		// First, add the formatted context as a system message to show what we're sending to the AI
+		await this.addMessage("system", messages[1].content);
+
+		const result = await generateObject({
+			model: openaiClient("gpt-4o"),
+			messages,
+			schema: TONE_SCHEMA,
+		});
+
+		if (result.object) {
+			// Update the whiteboard shapes with the new tone progression
+			await this.updateWhiteboardShapes(result.object);
 		}
+
+		return result.object;
 	}
 
 	private async formatMessagesForAI() {
@@ -364,15 +472,15 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 	private async updateContext() {
 		try {
 			// Read shapes from shapes.json
-			const { shapes: shapeTones, timelinePosition: currentPosition } =
-				await readShapesFile();
+			const shapeTones = await readShapesFile();
 
 			// Filter out shapes without text (they're not tone markers)
 			const toneShapes = shapeTones.filter((shape) => shape.text);
 
 			// Calculate elapsed time based on timeline position
-			// Convert timeline position to minutes
-			const elapsed = (currentPosition / TIMELINE_WIDTH) * this.durationMinutes;
+			// Convert timeline position to minutes using the signal
+			const elapsed =
+				(timelinePosition.value / TIMELINE_WIDTH) * this.durationMinutes;
 
 			// Calculate segment duration based on total duration and number of tones
 			const segmentDuration =
@@ -435,189 +543,35 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 		}
 	}
 
-	async addMessage(role: "user" | "assistant" | "system", content: string) {
-		const message: ChatMessage = {
-			role,
-			content,
-			timestamp: Date.now(),
+	private async generateInitialTonePlan() {
+		// Calculate segment duration based on total duration and number of tones
+		const segmentDuration =
+			this.durationMinutes / this.initialToneProgression.length;
+
+		// Create initial tone plan with evenly spaced timing
+		const initialPlan = this.initialToneProgression.map((tone, index) => ({
+			tone,
+			timing: index * segmentDuration,
+			status: index === 0 ? "active" : "planned",
+			ready_for_transition: index === 1, // Only the next tone is ready for transition
+		}));
+
+		// Create initial AI response with tone plan
+		const initialResponse = {
+			tone: {
+				current: this.initialToneProgression[0],
+				progression: initialPlan,
+				progress: "early",
+			},
+			response: {
+				content: "Initializing conversation...",
+				intent: "Setting up initial tone progression",
+			},
 		};
-		this.history.push(message);
 
-		// Update tone history for assistant messages
-		if (role === "assistant") {
-			try {
-				const parsed = TONE_SCHEMA.parse(JSON.parse(content));
-				this.toneHistory.push({
-					tone: parsed.tone.current,
-					timestamp: message.timestamp,
-				});
-
-				// Find the next planned tone in the progression
-				const nextTone = parsed.tone.progression.find(
-					(t) => t.status === "planned",
-				);
-
-				// Update tone progression if needed
-				if (
-					nextTone &&
-					(nextTone.ready_for_transition || parsed.tone.progress === "late") &&
-					this.currentToneIndex < this.initialToneProgression.length - 1
-				) {
-					this.currentToneIndex++;
-				}
-			} catch (error) {
-				// If message isn't in the expected format, maintain current tone
-				this.toneHistory.push({
-					tone: this.initialToneProgression[this.currentToneIndex],
-					timestamp: message.timestamp,
-				});
-			}
-		}
-
-		// Update context and format for next turn
-		await this.updateContext();
-		await this.saveHistory();
-	}
-
-	async getAIResponse(): Promise<z.infer<typeof TONE_SCHEMA> | undefined> {
-		const messages = await this.formatMessagesForAI();
-		const result = await generateObject({
-			model: openai("gpt-4o"),
-			messages,
-			schema: TONE_SCHEMA,
-		});
-
-		return result.object;
-	}
-
-	private formatTimestamp(timestamp: number): string {
-		return new Date(timestamp).toLocaleTimeString();
-	}
-
-	private printSystemMessage(message: string) {
-		console.log(`${colors.dim}${message}${colors.reset}`);
-	}
-
-	private printUserMessage(content: string, timestamp: number) {
-		console.log(
-			`${colors.gray}[${this.formatTimestamp(timestamp)}] ${colors.cyan}You: ${colors.reset}${content}`,
-		);
-	}
-
-	private printAssistantMessage(content: string, timestamp: number) {
-		console.log(
-			`${colors.gray}[${this.formatTimestamp(timestamp)}] ${colors.green}Bot: ${colors.reset}${content}`,
-		);
-	}
-
-	private printDebugObject(label: string, obj: unknown) {
-		console.log(
-			`\n${colors.blue}=== ${label} ===${colors.reset}\n${colors.dim}${
-				typeof obj === "string" ? obj : JSON.stringify(obj, null, 2)
-			}${colors.reset}\n`,
-		);
-	}
-
-	async start() {
-		console.clear();
-		console.log(
-			`${colors.bright}Welcome to ChatBot!${colors.reset}\n${colors.dim}Type 'exit' to quit or 'history' to see chat history.${colors.reset}\n`,
-		);
-
-		// Ensure initialization is complete
-		await this.initialize();
-
-		// Handle Ctrl+C
-		process.on("SIGINT", () => {
-			console.log("\nReceived SIGINT. Shutting down...");
-			process.exit(0);
-		});
-
-		// Add initial system message
-		if (this.history.length === 0) {
-			await this.addMessage("system", this.systemPrompt);
-		}
-
-		try {
-			// Use Bun's console API for reading input
-			for await (const line of console) {
-				const userInput = line.trim();
-
-				if (userInput.toLowerCase() === "exit") {
-					this.printSystemMessage("\nGoodbye!");
-					break;
-				}
-
-				if (userInput.toLowerCase() === "history") {
-					this.displayHistory();
-					process.stdout.write(`${colors.yellow}>>${colors.reset} `);
-					continue;
-				}
-
-				// Add and display user message
-				await this.addMessage("user", userInput);
-				this.printUserMessage(userInput, Date.now());
-
-				// Ensure context is updated before printing
-				await this.updateContext();
-				// Print current context
-				const currentContext = await formatContext(this.context);
-				this.printDebugObject("Current Context", currentContext);
-
-				// Get AI response
-				this.printSystemMessage("Bot is thinking...");
-				const response = await this.getAIResponse();
-
-				// Print raw response
-				this.printDebugObject("AI Response Object", response);
-
-				if (!response) {
-					this.printSystemMessage("No response from AI");
-					continue;
-				}
-
-				// Display formatted response
-				this.printAssistantMessage(response.response.content, Date.now());
-				await this.addMessage("assistant", response.response.content);
-
-				// Print prompt for next input
-				process.stdout.write(`${colors.yellow}>>${colors.reset} `);
-			}
-		} finally {
-			// Clean up and exit
-			process.exit(0);
-		}
-	}
-
-	displayHistory() {
-		if (this.history.length === 0) {
-			this.printSystemMessage("No chat history yet.");
-			return;
-		}
-
-		console.log(`\n${colors.bright}Chat History:${colors.reset}`);
-		this.history.forEach((msg) => {
-			switch (msg.role) {
-				case "user":
-					this.printUserMessage(msg.content, msg.timestamp);
-					break;
-				case "assistant":
-					this.printAssistantMessage(msg.content, msg.timestamp);
-					break;
-				case "system":
-					this.printSystemMessage(msg.content);
-					break;
-			}
-		});
-		console.log();
+		// Add the initial response to history
+		await this.addMessage("assistant", JSON.stringify(initialResponse));
 	}
 }
 
-// Export the ChatBot class for use in other files
 export default ChatBot;
-
-// Add a main function to run the chat bot directly
-if (import.meta.main) {
-	const bot = new ChatBot();
-	bot.start();
-}
