@@ -10,8 +10,16 @@ export const activeDocuments = signal<TLShapeId[]>([]);
 export const documents = signal<TLShape[]>([]);
 export const editor = signal<Editor | null>(null);
 
-// computed
+// computed signals
 export const progress = computed(() => timelinePosition.value / TIMELINE_WIDTH);
+export const markerPositions = computed(() => {
+	const positions = new Set(
+		documents.value
+			.filter((doc) => doc.id !== TIMELINE_CURSOR_ID)
+			.map((shape) => Math.round(shape.x / 10) * 10),
+	);
+	return Array.from(positions);
+});
 
 // debug panel state
 export const isDebugOpen = signal(true);
