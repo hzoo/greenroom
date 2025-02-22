@@ -4,6 +4,7 @@
     "": {
       "name": "bun-react-template",
       "dependencies": {
+        "@11labs/client": "^0.0.7",
         "@ai-sdk/openai": "^1.1.13",
         "@preact/signals-react": "^3.0.1",
         "ai": "^4.1.45",
@@ -28,6 +29,8 @@
     },
   },
   "packages": {
+    "@11labs/client": ["@11labs/client@0.0.7", "", {}, "sha512-BbEV3aMZ8fFGUkjUN9aK6LhJwMv1Fiskx1NuVaO2M+r2bzMzrVenNm9qr8dYct+ixPqWt+M2d35e0QWWgHt3GQ=="],
+
     "@ai-sdk/openai": ["@ai-sdk/openai@1.1.13", "", { "dependencies": { "@ai-sdk/provider": "1.0.8", "@ai-sdk/provider-utils": "2.1.9" }, "peerDependencies": { "zod": "^3.0.0" } }, "sha512-IdChK1pJTW3NQis02PG/hHTG0gZSyQIMOLPt7f7ES56C0xH2yaKOU1Tp2aib7pZzWGwDlzTOW2h5TtAB8+V6CQ=="],
 
     "@ai-sdk/provider": ["@ai-sdk/provider@1.0.8", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-f9jSYwKMdXvm44Dmab1vUBnfCDSFfI5rOtvV1W9oKB7WYHR5dGvCC6x68Mk3NUfrdmNoMVHGoh6JT9HCVMlMow=="],

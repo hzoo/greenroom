@@ -27,6 +27,40 @@ const server = serve({
 				}
 			},
 		},
+		"/api/signed-url": {
+			async GET(req) {
+				const agentId = process.env.AGENT_ID;
+				const apiKey = process.env.XI_API_KEY;
+
+				if (!agentId || !apiKey) {
+					return new Response("Missing env for AGENT_ID or XI_API_KEY", {
+						status: 500,
+					});
+				}
+
+				try {
+					const response = await fetch(
+						`https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${agentId}`,
+						{
+							method: "GET",
+							headers: {
+								"xi-api-key": apiKey,
+							},
+						},
+					);
+
+					if (!response.ok) {
+						throw new Error("Failed to get signed URL");
+					}
+
+					const data = await response.json();
+					return Response.json({ signedUrl: data.signed_url });
+				} catch (error) {
+					console.error("Error:", error);
+					return new Response("Failed to get signed URL", { status: 500 });
+				}
+			},
+		},
 	},
 
 	development: process.env.NODE_ENV !== "production",
