@@ -82,10 +82,10 @@ export const SYSTEM_SHAPE_IDS = [
 
 // Initial shape positions
 const INITIAL_SHAPES = [
-	{ x: 100, y: 100, color: "blue", text: "professional" },
-	{ x: 300, y: 150, color: "green", text: "friendly" },
-	{ x: 500, y: 200, color: "yellow", text: "collaborative" },
-	{ x: 700, y: 250, color: "orange", text: "instructive" },
+	{ x: 100, y: 100, color: "yellow", text: "casual" },
+	{ x: 300, y: 150, color: "orange", text: "enthusiastic" },
+	{ x: 500, y: 200, color: "green", text: "friendly" },
+	{ x: 700, y: 250, color: "blue", text: "supportive" },
 ] as const;
 
 // Helper functions to create tone shapes with jitter
@@ -233,10 +233,7 @@ export const updateWhiteboardShapes = async () => {
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({
-				shapes: updatedShapes,
-				timelinePosition: timelinePosition.value,
-			}),
+			body: JSON.stringify(updatedShapes),
 		});
 	} catch (error) {
 		console.error("Failed to update whiteboard shapes:", error);
@@ -298,10 +295,7 @@ export const updateShapes = async () => {
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({
-				shapes: simpleShapes,
-				timelinePosition: timelinePosition.value,
-			}),
+			body: JSON.stringify(simpleShapes),
 		});
 	} catch (error) {
 		console.error("Failed to save shapes:", error);

@@ -7,8 +7,8 @@ import {
 	SYSTEM_SHAPE_IDS,
 	timelinePosition,
 	TIMELINE_WIDTH,
+	editor,
 } from "@/store/whiteboard";
-// import { timelinePosition } from "@/store/whiteboard";
 
 // ANSI color codes
 const colors = {
@@ -87,12 +87,39 @@ Guidelines:
 - Maintain context from previous exchanges
 - Adapt timing if conversation pace differs from expected
 - Balance task progress with natural conversation flow
-- Respect driver modifications:
+
+Dynamic Tone Adaptation Rules:
+1. When user requests tone changes:
+   - Immediately evaluate if current tone progression matches request
+   - Replace upcoming tones with more suitable ones from available options
+   - Adjust timing to transition to new tones sooner if needed
+   - Example: If user asks for "more humor", shift to casual/enthusiastic tones
+   - Example: If user asks for "more serious", shift to professional/analytical tones
+
+2. Monitor conversation effectiveness:
+   - If current tone isn't engaging user, proactively suggest tone changes
+   - Look for keywords/phrases indicating user's preferred style
+   - Example: User saying "this is boring" -> shift to more engaging tones
+   - Example: User giving short responses -> try more enthusiastic tone
+
+3. Preserve task progress while changing tone:
+   - Keep informational content consistent even as tone shifts
+   - Use new tone to enhance rather than detract from goal
+   - Example: Teaching can be done professionally or casually
+   - Example: Support can be given formally or empathetically
+
+4. Handle multiple tone requests:
+   - Blend compatible tones when possible
+   - Prioritize most recent request if conflicting
+   - Example: "professional but friendly" -> blend both tones
+   - Example: "serious then casual" -> sequence the tones
+
+Respect driver modifications:
   * Never change the timing of tones that have been manually positioned
   * Adapt your responses to fit modified tone timings
   * Only suggest new tone positions for unmodified tones
 - Adjust tone progression plan when:
-  * Recipient shows resistance to current tone
+  * Recipient shows resistance to or requests a change in tone
   * Conversation takes unexpected turns
   * Certain tones prove more/less effective
   * Progress is faster/slower than expected
@@ -107,6 +134,19 @@ Example tone progressions with timing (for different durations):
 
 30-minute conversation:
 - Professional (0-8min) → Friendly (8-15min) → Collaborative (15-22min) → Instructive (22-30min)
+
+Example tone adaptations:
+1. User requests "more fun":
+   Before: Professional → Friendly → Instructive
+   After: Casual → Enthusiastic → Friendly
+
+2. User requests "more serious":
+   Before: Casual → Friendly → Supportive
+   After: Professional → Analytical → Instructive
+
+3. User requests "be funnier" mid-conversation:
+   Current: Professional (active) → Friendly (planned) → Instructive (planned)
+   Adapted: Professional (past) → Casual (next) → Enthusiastic (planned)
 
 For each response, you will:
 1. Analyze the conversation state and timing
@@ -143,8 +183,7 @@ Output format:
     "content": "your response text",
     "intent": "brief explanation of response strategy"
   }
-}
-`;
+}`;
 
 const TONE_SCHEMA = z.object({
 	tone: z.object({
@@ -257,6 +296,20 @@ ${formattedTonePlan}
 `.trim();
 }
 
+// Helper to get color based on shape status
+const getColorForStatus = (status: string) => {
+	switch (status) {
+		case "past":
+			return "light-blue";
+		case "staged_within_threshold":
+			return "yellow";
+		case "future":
+			return "light-violet";
+		default:
+			return "light-blue";
+	}
+};
+
 class ChatBot {
 	private history: ChatMessage[] = [];
 	private systemPrompt: string;
@@ -293,10 +346,10 @@ class ChatBot {
 		],
 		private task = "Teach the user, a non-technical person, how to use Obsidian",
 		private initialToneProgression = [
-			"professional",
+			"casual",
+			"enthusiastic",
 			"friendly",
-			"collaborative",
-			"instructive",
+			"supportive",
 		],
 		durationMinutes = 15,
 	) {
@@ -342,6 +395,20 @@ class ChatBot {
 					(t) => t.status === "planned",
 				);
 
+				// Check if tone progression has changed
+				const newTones = parsed.tone.progression.map((t) => t.tone);
+				const currentTones = this.initialToneProgression;
+				const hasTonesChanged =
+					JSON.stringify(newTones) !== JSON.stringify(currentTones);
+
+				if (hasTonesChanged) {
+					// Update the initial progression to match the new one
+					this.initialToneProgression = [...newTones];
+
+					// Force a whiteboard update with the new progression
+					await this.updateWhiteboardShapes(parsed);
+				}
+
 				// Update tone progression if needed
 				if (
 					nextTone &&
@@ -373,45 +440,133 @@ class ChatBot {
 
 	private async updateWhiteboardShapes(response: z.infer<typeof TONE_SCHEMA>) {
 		try {
+			console.log("🎭 Updating whiteboard shapes with new tone progression:", {
+				current: response.tone.current,
+				progression: response.tone.progression.map((t) => ({
+					tone: t.tone,
+					timing: t.timing,
+				})),
+			});
+
 			// Read current shapes to preserve system shapes
 			const currentShapes = await readShapesFile();
+			console.log(
+				"📝 Current shapes from file:",
+				currentShapes.map((s) => ({ id: s.id, text: s.text })),
+			);
 
 			// Filter out system shapes from current shapes using SYSTEM_SHAPE_IDS
 			const systemShapes = currentShapes.filter((shape) =>
 				SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId),
 			);
+			console.log(
+				"🔧 System shapes preserved:",
+				systemShapes.map((s) => s.id),
+			);
 
 			// Calculate base positions for each tone in the progression
 			const tonePositions = response.tone.progression.map((tone, index) => {
-				// Convert timing to x position
+				// Calculate x position based on timing and total duration
 				const x = (tone.timing / this.durationMinutes) * TIMELINE_WIDTH;
 				// Add some vertical scatter
 				const y = Math.random() * 400 - 200; // Random y between -200 and 200
 
-				return {
-					id: `tone-${index}`,
+				const position = {
+					id: `shape:tone-${index}`,
 					x,
 					y,
 					text: tone.tone,
 					type: "tone" as const,
 					status: tone.status,
 					proportion_in_timeline: tone.timing / this.durationMinutes,
+					isModified: false, // Reset modification state for new progression
 				};
+
+				console.log(`📍 Calculated position for tone ${tone.tone}:`, {
+					x: Math.round(x),
+					y: Math.round(y),
+					status: tone.status,
+					timing: `${Math.round(tone.timing * 100) / 100}min`,
+					proportion: `${Math.round(position.proportion_in_timeline * 100)}%`,
+				});
+
+				return position;
 			});
 
-			// Combine tone positions with system shapes
+			// Force a complete redraw by combining system shapes with new tone positions
 			const allShapes = [...systemShapes, ...tonePositions];
+			console.log("🔄 Final shape configuration:", {
+				total: allShapes.length,
+				system: systemShapes.length,
+				tones: tonePositions.length,
+				sequence: tonePositions.map((t) => t.text).join(" → "),
+			});
 
 			// Save the shapes to the shapes.json file
-			await fetch("/api/shapes", {
+			console.log("💾 Saving shapes to file...");
+			const saveResponse = await fetch("/api/shapes", {
 				method: "PUT",
 				headers: {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify(allShapes),
 			});
+
+			if (!saveResponse.ok) {
+				const errorText = await saveResponse.text();
+				console.error("Response from server:", errorText);
+				throw new Error(
+					`Failed to save shapes: ${saveResponse.status} ${saveResponse.statusText}\n${errorText}`,
+				);
+			}
+
+			// Force an immediate update of the whiteboard
+			if (editor.value) {
+				// Delete existing non-system shapes
+				const existingShapes = Array.from(
+					editor.value.getCurrentPageShapes(),
+				).filter((shape) => !SYSTEM_SHAPE_IDS.includes(shape.id));
+				editor.value.deleteShapes(existingShapes.map((shape) => shape.id));
+
+				// Create new shapes
+				allShapes.forEach((shape) => {
+					if (!SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId)) {
+						editor.value?.createShapes([
+							{
+								id: shape.id as TLShapeId,
+								type: "geo",
+								x: shape.x,
+								y: shape.y,
+								props: {
+									geo: "rectangle",
+									color: getColorForStatus(shape.status),
+									w: 100,
+									h: 50,
+									text: shape.text,
+								},
+							},
+						]);
+					}
+				});
+			}
+
+			console.log("✅ Shapes saved and whiteboard updated successfully");
 		} catch (error) {
-			console.error("Error updating whiteboard shapes:", error);
+			console.error("❌ Error updating whiteboard shapes:", error);
+			// Log more details about the error
+			if (error instanceof Error) {
+				console.error("Error details:", {
+					message: error.message,
+					stack: error.stack,
+					name: error.name,
+				});
+			}
+			// Log the current state that failed to save
+			console.error("Failed state:", {
+				response,
+				timelinePosition: timelinePosition.value,
+			});
+			throw error; // Re-throw to let caller handle the error
 		}
 	}
 
