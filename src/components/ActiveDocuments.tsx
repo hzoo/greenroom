@@ -7,20 +7,37 @@ import {
 	TIMELINE_CURSOR_ID,
 	isDebugOpen,
 	progress,
+	TIMELINE_WIDTH,
 } from "@/store/whiteboard";
 import { cn } from "@/lib/utils";
 
 const getShapeStatus = (x: number) => {
-	if (x <= timelinePosition.value) return "past";
+	const pos = timelinePosition.value;
+	const buffer = 5; // Small buffer for "current" state
+	if (Math.abs(x - pos) <= buffer) return "current";
+	if (x <= pos) return "past";
 	return "future";
 };
 
-const getStatusStyle = (status: "past" | "future") => {
+const getStatusStyle = (status: "past" | "current" | "future") => {
 	switch (status) {
+		case "current":
+			return "bg-yellow-600/50";
 		case "past":
 			return "bg-gray-700/50";
 		case "future":
 			return "bg-blue-700/50";
+	}
+};
+
+const getStatusColor = (status: "past" | "current" | "future") => {
+	switch (status) {
+		case "current":
+			return "bg-yellow-600/50";
+		case "past":
+			return "bg-gray-600/50";
+		case "future":
+			return "bg-blue-600/50";
 	}
 };
 
@@ -67,13 +84,28 @@ export function ActiveDocuments() {
 					className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700/50 z-[9999] transition-all duration-300"
 					style={{ height: `${contentHeight}px` }}
 				>
-					{/* Header */}
-					<div className="flex justify-between items-center p-1 border-b border-gray-700/50">
-						<h3 className="text-xs font-medium text-gray-400">
-							Debug View - {displayShapes.length} Shapes (
-							{activeDocuments.value.length} Active) -{" "}
-							{formatPercent(progress.value)}% Complete
-						</h3>
+					{/* Header with progress bar background */}
+					<div className="relative border-b border-gray-700/50">
+						{/* Progress bar background */}
+						<div
+							className="absolute inset-0 bg-blue-500/10 transition-all duration-100"
+							style={{ width: `${progress.value * 100}%` }}
+						/>
+
+						{/* Header content */}
+						<div className="relative flex justify-between items-center p-1">
+							<h3 className="text-xs font-medium text-gray-200">
+								Debug View - {displayShapes.length} Shapes (
+								{activeDocuments.value.length} Active) -{" "}
+								<span className="font-mono">
+									{formatPercent(progress.value)}%
+								</span>
+								<span className="ml-2 font-mono text-gray-400">
+									Cursor: {formatCoord(timelinePosition.value)}/
+									{formatCoord(TIMELINE_WIDTH)}
+								</span>
+							</h3>
+						</div>
 					</div>
 
 					{/* Content - Scrollable */}
@@ -102,7 +134,7 @@ export function ActiveDocuments() {
 										<span
 											className={cn(
 												"px-1.5 py-0.5 rounded-sm text-[10px] uppercase",
-												status === "past" ? "bg-gray-600/50" : "bg-blue-600/50",
+												getStatusColor(status),
 											)}
 										>
 											{status}
