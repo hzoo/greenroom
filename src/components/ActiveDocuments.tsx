@@ -38,10 +38,22 @@ interface ShapeProps {
 }
 
 // Utilities
-const getShapeStatus = (x: number, pos: number) => {
+const getShapeStatus = (shape: TLShape, timelinePos: number) => {
 	const buffer = 5;
-	if (Math.abs(x - pos) <= buffer) return "current";
-	if (x <= pos) return "past";
+	const shapeStart = shape.x;
+	const shapeEnd = shape.x + (shape.props as ShapeProps).w;
+
+	// Consider a shape "current" if the timeline position is within its bounds
+	// plus a small buffer on either side
+	if (timelinePos >= shapeStart - buffer && timelinePos <= shapeEnd + buffer) {
+		return "current";
+	}
+
+	// Past if we've crossed the left edge of the shape
+	if (timelinePos > shapeStart) {
+		return "past";
+	}
+
 	return "future";
 };
 
@@ -191,7 +203,7 @@ const DebugHeader = memo(function DebugHeader({
 
 const ShapeItem = memo(function ShapeItem({ shape }: { shape: TLShape }) {
 	useSignals();
-	const status = getShapeStatus(shape.x, timelinePosition.value);
+	const status = getShapeStatus(shape, timelinePosition.value);
 	const props = shape.props as ShapeProps;
 
 	return (
