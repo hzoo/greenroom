@@ -19,8 +19,14 @@ const server = serve({
 			},
 			async PUT(req) {
 				try {
-					const shapes = await req.json();
-					await Bun.write(SHAPES_FILE, JSON.stringify(shapes, null, 2));
+					const { shapes, timelinePosition } = await req.json();
+					// Sort shapes by x position
+					const sortedShapes = shapes.sort((a, b) => a.x - b.x);
+					const output = {
+						shapes: sortedShapes,
+						timelinePosition,
+					};
+					await Bun.write(SHAPES_FILE, JSON.stringify(output, null, 2));
 					return Response.json({ success: true });
 				} catch (error) {
 					return new Response("Error writing shapes", { status: 500 });

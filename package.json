@@ -10,7 +10,7 @@
     "server": "bun --hot server.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "chat": "bun run chatbot.ts"
+    "chat": "bun run src/chatbot.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.1.13",

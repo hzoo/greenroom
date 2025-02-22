@@ -66,7 +66,10 @@ export const updateShapes = async () => {
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify(simpleShapes),
+			body: JSON.stringify({
+				shapes: simpleShapes,
+				timelinePosition: timelinePosition.value,
+			}),
 		});
 	} catch (error) {
 		console.error("Failed to save shapes:", error);

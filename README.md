@@ -1,4 +1,4 @@
-# Dynamic AI Conversation Control System
+# Greenroom: Dynamic AI Conversation Control System
 
 A system for real-time control and visualization of AI conversations.
 
@@ -181,3 +181,10 @@ AI responses follow this structure:
 - Document-based context
 - Multi-user support
 - Custom tone progressions
+
+
+## Screenshots
+
+![screenshot](screenshots/CleanShot%202025-02-22%20at%2014.21.55.png)
+
+![screenshot](screenshots/CleanShot%202025-02-22%20at%2014.38.22.gif)
