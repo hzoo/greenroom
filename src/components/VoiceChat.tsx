@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 const conversation = signal<Conversation | null>(null);
 const isConnected = signal(false);
 const isSpeaking = signal(false);
+const agentName = signal<string>("");
 
 const buttonStyles =
 	"w-full px-3 py-2 text-sm rounded-md border border-gray-200/20 hover:bg-gray-700/50 transition-colors";
@@ -20,9 +21,11 @@ async function requestMicrophonePermission() {
 	}
 }
 
-async function getSignedUrl() {
+async function getSignedUrl(agentId: string) {
 	try {
-		const response = await fetch("/api/signed-url");
+		const response = await fetch(
+			`/api/elevenlabs/signed-url?agentId=${agentId}`,
+		);
 		if (!response.ok) throw new Error("Failed to get signed URL");
 		const data = await response.json();
 		return data.signedUrl;
@@ -32,7 +35,53 @@ async function getSignedUrl() {
 	}
 }
 
+async function createAgent(name: string, prompt: string) {
+	try {
+		const response = await fetch("/api/elevenlabs/agents", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ name, prompt }),
+		});
+		if (!response.ok) throw new Error("Failed to create agent");
+		const data = await response.json();
+		return data.agentId;
+	} catch (error) {
+		console.error("Error creating agent:", error);
+		throw error;
+	}
+}
+
 export function VoiceChat() {
+	useEffect(() => {
+		// Get agent ID from URL parameters
+		const params = new URLSearchParams(window.location.search);
+		const agentId = params.get("agentId");
+		const name = params.get("name");
+		if (name) {
+			agentName.value = decodeURIComponent(name);
+		}
+
+		// If no agent ID, create a new agent
+		if (!agentId) {
+			createAgent(
+				"Test Agent",
+				"You are a helpful AI assistant. Be concise and friendly.",
+			)
+				.then((newAgentId) => {
+					// Update URL with new agent ID
+					const newUrl = new URL(window.location.href);
+					newUrl.searchParams.set("agentId", newAgentId);
+					window.history.replaceState({}, "", newUrl);
+				})
+				.catch((error) => {
+					console.error("Failed to create agent:", error);
+					alert("Failed to create agent. Please try again.");
+				});
+		}
+	}, []);
+
 	async function startConversation() {
 		try {
 			const hasPermission = await requestMicrophonePermission();
@@ -41,9 +90,16 @@ export function VoiceChat() {
 				return;
 			}
 
-			const signedUrl = await getSignedUrl();
+			const params = new URLSearchParams(window.location.search);
+			const agentId = params.get("agentId");
+			if (!agentId) {
+				alert("No agent ID found. Please try refreshing the page.");
+				return;
+			}
+
+			const signedUrl = await getSignedUrl(agentId);
 			const conv = await Conversation.startSession({
-				signedUrl: signedUrl,
+				signedUrl,
 				onConnect: () => {
 					isConnected.value = true;
 					isSpeaking.value = true;
@@ -85,7 +141,9 @@ export function VoiceChat() {
 	return (
 		<div className="flex flex-col h-screen bg-gray-900 text-gray-100">
 			<div className="flex justify-between items-center p-2 bg-gray-800/50 backdrop-blur-sm border-b border-gray-700/50">
-				<h2 className="text-sm font-medium text-gray-300">Voice Chat</h2>
+				<h2 className="text-sm font-medium text-gray-300">
+					{agentName.value || "Voice Chat"}
+				</h2>
 				<div className="text-xs text-gray-400 font-mono">
 					{isConnected.value
 						? isSpeaking.value

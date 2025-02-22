@@ -18,7 +18,8 @@ export default defineConfig({
 		rollupOptions: {
 			input: {
 				main: resolve(__dirname, "index.html"),
-				voice: resolve(__dirname, "src/voice-chat/index.html"),
+				voice: resolve(__dirname, "voice/index.html"),
+				agent: resolve(__dirname, "agent/index.html"),
 			},
 		},
 	},
