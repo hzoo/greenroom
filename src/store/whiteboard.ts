@@ -120,6 +120,7 @@ export const createToneShapes = (editorInstance: Editor) => {
 					w: 100,
 					h: 50,
 					text,
+					font: "mono",
 				},
 			},
 		]);
