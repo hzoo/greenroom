@@ -13,6 +13,7 @@ export function TldrawWrapper() {
 		editorInstance.setCurrentTool("geo");
 		editorInstance.user.updateUserPreferences({
 			animationSpeed: 1,
+			color: "dark",
 		});
 
 		// Setup editor with all listeners and initial shapes

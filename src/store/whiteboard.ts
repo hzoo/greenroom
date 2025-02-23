@@ -5,8 +5,8 @@ import type { SimpleShape } from "../lib/utils";
 import { createPersistedSignal } from "./signals";
 
 // Constants
-const SPEED = 100; // pixels per second
-export const TIMELINE_WIDTH = 5000;
+const SPEED = 10; // pixels per second
+export const TIMELINE_WIDTH = 2000;
 export const TIMELINE_HEIGHT = 2000;
 export const TIMELINE_CURSOR_ID = "shape:timeline-cursor" as TLShapeId;
 export const TIMELINE_BOX_ID = "shape:timeline-box" as TLShapeId;
@@ -125,9 +125,6 @@ export const createToneShapes = (editorInstance: Editor) => {
 		]);
 	});
 };
-
-// Replace createInitialShapes with createToneShapes in the initialization
-export const createInitialShapes = createToneShapes;
 
 // Function to update whiteboard shapes from shapes.json
 export const updateWhiteboardShapes = async () => {
@@ -384,14 +381,12 @@ effect(() => {
 		}
 
 		// Update the timeline shape position
-		editor.value?.updateShapes([
-			{
-				id: TIMELINE_CURSOR_ID,
-				type: "geo",
-				x: timelinePosition.value,
-				y: -1000,
-			},
-		]);
+		editor.value?.animateShape({
+			id: TIMELINE_CURSOR_ID,
+			type: "geo",
+			x: timelinePosition.value,
+			y: -1000,
+		});
 	}, 1000 / 60); // 60fps
 
 	return () => window.clearInterval(intervalId);

@@ -61,6 +61,15 @@ Your role:
 - Dynamically adjust the tone progression plan based on recipient responses
 - Respect and adapt to driver (human operator) modifications of the tone progression
 
+Important Tone Management Rules:
+1. ALWAYS prioritize rearranging existing tones over introducing new ones
+2. Only introduce new tones when absolutely necessary and existing tones cannot achieve the desired effect
+3. When adapting to feedback or changes:
+   - First try reordering current tones
+   - Then try adjusting timing of current tones
+   - Only as a last resort, replace tones with new ones
+4. Preserve tone consistency by reusing tones where possible
+
 Available Tones:
 You have access to the following tones for crafting your responses and planning progressions:
 {{toneDictionary}}
@@ -560,32 +569,73 @@ class ChatBot {
 
 			// Force an immediate update of the whiteboard
 			if (editor.value) {
-				// Delete existing non-system shapes
+				// Get existing non-system shapes
 				const existingShapes = Array.from(
 					editor.value.getCurrentPageShapes(),
 				).filter((shape) => !SYSTEM_SHAPE_IDS.includes(shape.id));
-				editor.value.deleteShapes(existingShapes.map((shape) => shape.id));
 
-				// Create new shapes
+				// Create a map of existing shapes by their text (tone name)
+				const existingShapesByTone = new Map(
+					existingShapes.map((shape) => {
+						const props = shape.props as { text?: string };
+						return [props.text, shape];
+					}),
+				);
+
+				// Update or create shapes
 				allShapes.forEach((shape) => {
 					if (!SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId)) {
-						editor.value?.createShapes([
-							{
-								id: shape.id as TLShapeId,
-								type: "geo",
-								x: shape.x,
-								y: shape.y,
-								props: {
-									geo: "rectangle",
-									color: getColorForStatus(shape.status),
-									w: 100,
-									h: 50,
-									text: shape.text,
+						const existingShape = existingShapesByTone.get(shape.text);
+						console.log("🔍 Existing shape:", existingShape);
+
+						if (existingShape) {
+							// Update existing shape
+							editor.value?.animateShape(
+								{
+									...existingShape,
+									x: shape.x,
+									y: shape.y,
+									props: {
+										...existingShape.props,
+										color: getColorForStatus(shape.status),
+									},
 								},
-							},
-						]);
+								{
+									animation: {
+										duration: 100,
+										easing: (t) =>
+											t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2,
+									},
+								},
+							);
+							// Remove from map to track which shapes were handled
+							existingShapesByTone.delete(shape.text);
+						} else {
+							// Create new shape if it doesn't exist
+							editor.value?.createShapes([
+								{
+									id: shape.id as TLShapeId,
+									type: "geo",
+									x: shape.x,
+									y: shape.y,
+									props: {
+										geo: "rectangle",
+										color: getColorForStatus(shape.status),
+										w: 100,
+										h: 50,
+										text: shape.text,
+									},
+								},
+							]);
+						}
 					}
 				});
+
+				// Delete any remaining shapes that weren't updated
+				const shapesToDelete = Array.from(existingShapesByTone.values());
+				if (shapesToDelete.length > 0) {
+					editor.value.deleteShapes(shapesToDelete.map((shape) => shape.id));
+				}
 			}
 
 			console.log("✅ Shapes saved and whiteboard updated successfully");
@@ -617,7 +667,7 @@ class ChatBot {
 		await this.addMessage("system", messages[1].content);
 
 		const result = await generateObject({
-			model: openaiClient("gpt-4o"),
+			model: openaiClient("gpt-4o-mini"),
 			messages,
 			schema: TONE_SCHEMA,
 		});
