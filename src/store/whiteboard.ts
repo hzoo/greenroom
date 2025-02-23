@@ -162,6 +162,7 @@ export const createToneShapes = (editorInstance: Editor) => {
 
 		editorInstance.createShapes([
 			{
+				id: `shape:tone-${text}` as TLShapeId,
 				type: "geo",
 				x: jitteredX,
 				y: scatteredY,

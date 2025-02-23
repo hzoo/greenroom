@@ -1,10 +1,11 @@
 import { Tldraw, DefaultToolbar, useTools, TldrawUiMenuItem } from "tldraw";
 import type { Editor, TLUiComponents } from "tldraw";
 import { useSignals } from "@preact/signals-react/runtime";
-import { setupEditorListeners } from "@/store/whiteboard";
+import { getColorForStatus, setupEditorListeners } from "@/store/whiteboard";
 import { TIMELINE_HEIGHT } from "@/store/whiteboard";
 
 import "tldraw/tldraw.css";
+import { getRandomTone } from "@/lib/tones";
 
 function CustomToolbar() {
 	const tools = useTools();
@@ -60,9 +61,35 @@ export function TldrawWrapper() {
 			colorScheme: "system",
 		});
 
+		// Setup editor with all listeners and initial shapes
+		setupEditorListeners(editorInstance);
+
 		// Set font to mono for all created shapes
 		editorInstance.sideEffects.registerBeforeCreateHandler("shape", (shape) => {
 			if (shape.props) {
+				if (
+					!shape.id.startsWith("shape:tone-") &&
+					!shape.id.startsWith("shape:timeline-")
+				) {
+					// Get all existing tones from the editor
+					const existingTones = new Set(
+						Array.from(editorInstance.getCurrentPageShapes())
+							.map((s) => (s.props as { text?: string }).text)
+							.filter(Boolean) as string[],
+					);
+
+					// Get a random tone that isn't already used
+					const unusedTone = getRandomTone(existingTones);
+
+					return {
+						...shape,
+						props: {
+							...shape.props,
+							text: unusedTone,
+							color: getColorForStatus("future"),
+						},
+					};
+				}
 				return {
 					...shape,
 					props: {
@@ -73,9 +100,6 @@ export function TldrawWrapper() {
 			}
 			return shape;
 		});
-
-		// Setup editor with all listeners and initial shapes
-		setupEditorListeners(editorInstance);
 	};
 
 	return (
