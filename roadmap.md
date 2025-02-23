@@ -368,6 +368,8 @@ set of ui updates for the chatbot:
   - to show that behavior is very steerable -- for new people to ai
 - demo script using the devpost text as seed and guide claude to do the most compelling things
 
+- demo: should incorporate various ways to use the canvas: maybe creating a new tone/word, increasing the duration of a tone, renaming a tone to a different word, etc..
+ 
 Later:
 
 [ ] documents ("planning for direction of information")  

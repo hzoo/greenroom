@@ -1,13 +1,22 @@
-import { signal } from "@preact/signals-react";
+import { batch } from "@preact/signals-react";
 import type {
 	SpeechControlConfig,
-	SpeechControlState,
 	SpeechControlEvents,
 	SpeechRecognition,
 	SpeechRecognitionEvent,
 	SpeechRecognitionErrorEvent,
 } from "./types";
 import { AudioQueueManager, audioChunks } from "./AudioQueueManager";
+import {
+	isConnected,
+	isUserSpeaking,
+	isListening,
+	isPaused,
+	transcript,
+	volume,
+	isAgentSpeaking,
+} from "@/store/signals";
+import { debugLog } from "../debug";
 
 // Default configuration
 const DEFAULT_CONFIG: Required<SpeechControlConfig> = {
@@ -18,47 +27,14 @@ const DEFAULT_CONFIG: Required<SpeechControlConfig> = {
 	elevenlabsVoiceId: "JBFqnCBsd6RMkjVDRZzb",
 };
 
-// State signals
-export const speechState = signal<SpeechControlState>({
-	isConnected: false,
-	isSpeaking: false,
-	isListening: false,
-	isUserSpeaking: false,
-	volume: 1,
-	transcript: [],
-});
-
-// Debug logging with color coding
-function debugLog(
-	message: string,
-	data?: unknown,
-	type: "recognition" | "synthesis" | "error" = "recognition",
-) {
-	const colors = {
-		recognition: "#10b981", // Green for speech recognition
-		synthesis: "#3b82f6", // Blue for speech synthesis
-		error: "#ef4444", // Red for errors
-	};
-
-	console.log(
-		`%c[SPEECH ${type.toUpperCase()}] %c${message}`,
-		`color: ${colors[type]}; font-weight: bold`,
-		`color: ${colors[type]}`,
-		data ? "\n" : "",
-		data ? data : "",
-	);
-}
-
 export class SpeechControl {
 	private config: Required<SpeechControlConfig>;
 	private recognition: SpeechRecognition | null = null;
-	private audioContext: AudioContext | null = null;
+	private audioContext: AudioContext = new AudioContext();
 	private audioQueue: AudioQueueManager | null = null;
 	private events: SpeechControlEvents;
 	private silenceTimeout: ReturnType<typeof setTimeout> | null = null;
 	private currentTranscript = "";
-	private isAgentSpeaking = false;
-	private isPaused: boolean = false;
 
 	constructor(
 		config: SpeechControlConfig = {},
@@ -66,47 +42,49 @@ export class SpeechControl {
 	) {
 		this.config = { ...DEFAULT_CONFIG, ...config };
 		this.events = events;
+
+		// Initialize audio context first since it doesn't require permissions
+		this.audioQueue = new AudioQueueManager(this.audioContext);
+		debugLog("Audio context initialized", {
+			state: this.audioContext.state,
+			sampleRate: this.audioContext.sampleRate,
+		});
+	}
+
+	async requestMicrophonePermission(): Promise<boolean> {
+		try {
+			// First check if we already have permission
+			const permissions = await navigator.permissions.query({
+				name: "microphone" as PermissionName,
+			});
+			if (permissions.state === "granted") {
+				return true;
+			}
+
+			// If not granted, request it
+			await navigator.mediaDevices.getUserMedia({ audio: true });
+			return true;
+		} catch (error) {
+			debugLog("Microphone permission error:", error, "error");
+			return false;
+		}
 	}
 
 	async initialize() {
 		try {
-			// Request microphone permission
+			// Check for microphone permission
+			debugLog("Checking microphone permission...", null, "speech");
 			const hasPermission = await this.requestMicrophonePermission();
 			if (!hasPermission) {
-				throw new Error("Microphone permission denied");
+				throw new Error("Microphone permission not granted");
 			}
-
-			// Initialize audio context
-			if (!this.audioContext || this.audioContext.state === "closed") {
-				this.audioContext = new (
-					window.AudioContext || window.webkitAudioContext
-				)();
-				// Ensure context is running
-				if (this.audioContext.state === "suspended") {
-					await this.audioContext.resume();
-				}
-				this.audioQueue = new AudioQueueManager(this.audioContext);
-				debugLog("Audio context initialized", {
-					state: this.audioContext.state,
-					sampleRate: this.audioContext.sampleRate,
-				});
-			}
+			console.log("Microphone permission granted", hasPermission);
 
 			// Initialize speech recognition
 			await this.initializeSpeechRecognition();
-
-			speechState.value = { ...speechState.value, isConnected: true };
 		} catch (error) {
 			this.handleError(error as Error);
-		}
-	}
-
-	private async requestMicrophonePermission(): Promise<boolean> {
-		try {
-			await navigator.mediaDevices.getUserMedia({ audio: true });
-			return true;
-		} catch (error) {
-			return false;
+			throw error; // Re-throw to handle in the caller
 		}
 	}
 
@@ -134,12 +112,12 @@ export class SpeechControl {
 		recognition.onend = this.handleRecognitionEnd.bind(this);
 
 		this.recognition = recognition;
-		recognition.start();
+		this.recognition.start();
 	}
 
 	private handleRecognitionResult(event: Event) {
 		// If agent is speaking, ignore speech recognition results
-		if (this.isAgentSpeaking) {
+		if (isAgentSpeaking.value) {
 			debugLog("Ignoring speech recognition while agent is speaking");
 			return;
 		}
@@ -160,19 +138,18 @@ export class SpeechControl {
 		if (finalTranscript) {
 			debugLog("Final transcript received", { transcript: finalTranscript });
 			this.currentTranscript = finalTranscript;
-			speechState.value = {
-				...speechState.value,
-				isUserSpeaking: false,
-				transcript: [
-					...speechState.value.transcript,
-					{ message: finalTranscript, source: "user" },
-				],
-			};
+			batch(() => {
+				isUserSpeaking.value = false;
+				transcript.value = transcript.value.concat({
+					message: finalTranscript,
+					source: "user",
+				});
+			});
 			this.events.onTranscriptUpdate?.(finalTranscript, true);
 		} else if (interimTranscript) {
 			debugLog("Interim transcript update", { transcript: interimTranscript });
 			this.currentTranscript = interimTranscript;
-			speechState.value = { ...speechState.value, isUserSpeaking: true };
+			isUserSpeaking.value = true;
 			this.events.onTranscriptUpdate?.(interimTranscript, false);
 			this.checkSilence();
 		}
@@ -183,11 +160,7 @@ export class SpeechControl {
 			state: "listening",
 			timestamp: new Date().toISOString(),
 		});
-		speechState.value = {
-			...speechState.value,
-			isListening: true,
-			isConnected: true,
-		};
+		isListening.value = true;
 	}
 
 	private handleRecognitionError(event: Event) {
@@ -203,19 +176,20 @@ export class SpeechControl {
 		if (error.error === "no-speech") {
 			this.recognition?.start();
 		} else {
+			// isConnected.value = false;
 			this.handleError(new Error(`Speech recognition error: ${error.error}`));
 		}
 	}
 
 	private handleRecognitionEnd() {
 		debugLog("Speech recognition ended", {
-			isListening: speechState.value.isListening,
-			isAgentSpeaking: this.isAgentSpeaking,
+			isListening: isListening.value,
+			isAgentSpeaking: isAgentSpeaking.value,
 			timestamp: new Date().toISOString(),
 		});
 
-		// Only auto-restart if we're still listening and agent isn't speaking
-		if (speechState.value.isListening && !this.isAgentSpeaking) {
+		// Only auto-restart if we're still connected and agent isn't speaking
+		if (isConnected.value && !isAgentSpeaking.value && !isPaused.value) {
 			this.resumeRecognition();
 		}
 	}
@@ -226,8 +200,8 @@ export class SpeechControl {
 		}
 
 		this.silenceTimeout = setTimeout(() => {
-			if (speechState.value.isUserSpeaking) {
-				speechState.value = { ...speechState.value, isUserSpeaking: false };
+			if (isUserSpeaking.value) {
+				isUserSpeaking.value = false;
 				this.events.onTranscriptUpdate?.(this.currentTranscript, true);
 			}
 		}, this.config.silenceDuration);
@@ -244,7 +218,7 @@ export class SpeechControl {
 	}
 
 	private async resumeRecognition() {
-		if (!speechState.value.isListening || this.isAgentSpeaking) return;
+		if (!isListening.value || isAgentSpeaking.value) return;
 
 		debugLog("Creating new speech recognition session");
 		const SpeechRecognition =
@@ -299,13 +273,27 @@ export class SpeechControl {
 		);
 
 		// Set speaking state and abort current recognition session
-		this.isAgentSpeaking = true;
-		speechState.value = { ...speechState.value, isSpeaking: true };
+		isAgentSpeaking.value = true;
 		this.pauseRecognition();
 
 		// Track the completion handler
 		let completionHandler: (() => void) | undefined;
 		let hasError = false;
+
+		// Set up error recovery handler
+		const errorRecoveryHandler = () => {
+			if (!hasError) {
+				hasError = true;
+				debugLog(
+					"Error in audio processing, recovering speech recognition",
+					null,
+					"error",
+				);
+				isAgentSpeaking.value = false;
+				// isSpeaking.value = false;
+				this.resumeRecognition();
+			}
+		};
 
 		try {
 			const ws = new WebSocket(
@@ -315,24 +303,9 @@ export class SpeechControl {
 			// Set up completion handler
 			completionHandler = () => {
 				debugLog("Audio playback completed, resuming recognition");
-				this.isAgentSpeaking = false;
-				speechState.value = { ...speechState.value, isSpeaking: false };
+				isAgentSpeaking.value = false;
+				// isSpeaking.value = false;
 				this.resumeRecognition();
-			};
-
-			// Set up error recovery handler
-			const errorRecoveryHandler = () => {
-				if (!hasError) {
-					hasError = true;
-					debugLog(
-						"Error in audio processing, recovering speech recognition",
-						null,
-						"error",
-					);
-					this.isAgentSpeaking = false;
-					speechState.value = { ...speechState.value, isSpeaking: false };
-					this.resumeRecognition();
-				}
 			};
 
 			ws.onopen = () => {
@@ -499,8 +472,8 @@ export class SpeechControl {
 		}
 	}
 
-	setVolume(volume: number) {
-		speechState.value = { ...speechState.value, volume };
+	setVolume(vol: number) {
+		volume.value = vol;
 	}
 
 	async stop() {
@@ -517,21 +490,19 @@ export class SpeechControl {
 		if (this.audioContext) {
 			this.audioQueue?.clear();
 			await this.audioContext.close();
-			this.audioContext = null;
+			this.audioContext = new AudioContext();
 		}
 
-		speechState.value = {
-			...speechState.value,
-			isConnected: false,
-			isListening: false,
-			isSpeaking: false,
-			isUserSpeaking: false,
-		};
+		batch(() => {
+			isConnected.value = false;
+			isListening.value = false;
+			isUserSpeaking.value = false;
+			// isSpeaking.value = false;
+		});
 	}
 
 	private handleError(error: Error) {
 		debugLog(error.message, { stack: error.stack }, "error");
-		this.events.onError?.(error);
 	}
 
 	// Update error handling for WebSocket
@@ -546,7 +517,7 @@ export class SpeechControl {
 	}
 
 	pause() {
-		this.isPaused = true;
+		isPaused.value = true;
 		if (this.recognition) {
 			this.recognition.stop();
 		}
@@ -558,7 +529,7 @@ export class SpeechControl {
 	}
 
 	resume() {
-		this.isPaused = false;
+		isPaused.value = false;
 		if (this.recognition) {
 			this.recognition.start();
 		}
