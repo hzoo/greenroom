@@ -53,6 +53,20 @@ export function TldrawWrapper() {
 			colorScheme: "system",
 		});
 
+		// Set font to mono for all created shapes
+		editorInstance.sideEffects.registerBeforeCreateHandler("shape", (shape) => {
+			if (shape.props) {
+				return {
+					...shape,
+					props: {
+						...shape.props,
+						font: "mono",
+					},
+				};
+			}
+			return shape;
+		});
+
 		// Setup editor with all listeners and initial shapes
 		setupEditorListeners(editorInstance);
 	};
