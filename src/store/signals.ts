@@ -71,3 +71,6 @@ export const isPaused = signal(true);
 
 // Chatbot state
 export const chatbot = signal<ChatBot | null>(null);
+
+// Latest context signal
+export const latestContext = signal<string>("");

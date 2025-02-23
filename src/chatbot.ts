@@ -11,6 +11,7 @@ import {
 } from "@/store/whiteboard";
 import { getColorForStatus } from "@/store/whiteboard";
 import { TONE_WORDS } from "./lib/tones";
+import { latestContext } from "@/store/signals";
 
 // ANSI color codes
 const colors = {
@@ -256,7 +257,7 @@ ${formattedTonePlan}
 `.trim();
 }
 
-class ChatBot {
+export class ChatBot {
 	private history: ChatMessage[] = [];
 	private systemPrompt: string;
 	private currentToneIndex = 0;
@@ -717,7 +718,10 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 		};
 
 		// Add the initial response to history
-		await this.addMessage("assistant", JSON.stringify(initialResponse));
+		await this.addMessage(
+			"assistant",
+			JSON.stringify(initialResponse.response.content),
+		);
 
 		// Update whiteboard with initial shapes
 		await this.updateWhiteboardShapes(initialResponse);
@@ -734,16 +738,20 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 		// If message is from user, generate and return AI response
 		if (source === "user") {
 			await this.addMessage("user", message);
+			// Update the latest context after processing the response
+			latestContext.value = await this.getFormattedContext();
 			const response = await this.getAIResponse();
 			if (response) {
 				this.lastVoiceResponse = response;
-				await this.addMessage("assistant", JSON.stringify(response));
+				await this.addMessage("assistant", response.response.content);
 			}
 			return response;
 		}
 
 		// If message is from AI, just record it
 		await this.addMessage("assistant", message);
+		// Update context after recording AI message
+		latestContext.value = await this.getFormattedContext();
 		return undefined;
 	}
 
@@ -759,6 +767,11 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 	// Get the voice transcript
 	public getVoiceTranscript(): { message: string; source: "user" | "ai" }[] {
 		return this.voiceTranscript;
+	}
+
+	public async getFormattedContext(): Promise<string> {
+		const messages = await this.formatMessagesForAI();
+		return messages[1].content;
 	}
 }
 
