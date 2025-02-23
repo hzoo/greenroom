@@ -1,5 +1,6 @@
 import { signal } from "@preact/signals-react";
 import type { AudioChunk } from "./types";
+import { wsAudioAnalyzer } from "@/components/VoiceChat";
 
 // Base signals
 export const audioChunks = signal<AudioChunk[]>([]);
@@ -15,6 +16,7 @@ export class AudioQueueManager {
 	private ctx: AudioContext;
 	private onPlaybackComplete?: () => void;
 	private gainNode: GainNode;
+	private analyzer: AnalyserNode;
 	private pendingChunks: AudioChunk[] = [];
 	private isProcessingQueue = false;
 	private lastChunkEndTime = 0;
@@ -25,8 +27,18 @@ export class AudioQueueManager {
 	constructor(ctx: AudioContext) {
 		this.ctx = ctx;
 		this.gainNode = ctx.createGain();
-		this.gainNode.connect(ctx.destination);
+		this.analyzer = ctx.createAnalyser();
+		this.analyzer.fftSize = 512;
+		this.analyzer.smoothingTimeConstant = 0.8;
+
+		// Connect analyzer between gain node and destination
+		this.gainNode.connect(this.analyzer);
+		this.analyzer.connect(ctx.destination);
+
 		this.lastChunkEndTime = this.ctx.currentTime;
+
+		// Set the analyzer in our signal for visualization
+		wsAudioAnalyzer.value = this.analyzer;
 	}
 
 	async addToQueue(
@@ -202,5 +214,8 @@ export class AudioQueueManager {
 		// Reset gain
 		this.gainNode.gain.cancelScheduledValues(0);
 		this.gainNode.gain.setValueAtTime(1, 0);
+
+		// Reset analyzer
+		wsAudioAnalyzer.value = null;
 	}
 }

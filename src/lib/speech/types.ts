@@ -74,11 +74,6 @@ export interface AudioChunk {
 	};
 }
 
-export interface AudioQueueState {
-	chunks: AudioChunk[];
-	isPlaying: boolean;
-}
-
 // Speech Control Types
 export interface SpeechControlConfig {
 	silenceThreshold?: number;
@@ -89,10 +84,6 @@ export interface SpeechControlConfig {
 }
 
 export interface SpeechControlState {
-	isConnected: boolean;
-	isSpeaking: boolean;
-	isListening: boolean;
-	isUserSpeaking: boolean;
 	volume: number;
 	transcript: Array<{ message: string; source: "user" | "ai" }>;
 }

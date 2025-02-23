@@ -10,6 +10,7 @@ import {
 	editor,
 } from "@/store/whiteboard";
 import { getColorForStatus } from "@/store/whiteboard";
+import { TONE_WORDS } from "./lib/tones";
 
 // ANSI color codes
 const colors = {
@@ -277,16 +278,7 @@ class ChatBot {
 	private lastVoiceResponse: z.infer<typeof TONE_SCHEMA> | null = null;
 	private voiceTranscript: { message: string; source: "user" | "ai" }[] = [];
 
-	private toneDictionary = [
-		"blunt",
-		"enthusiastic",
-		"technical",
-		"casual",
-		"formal",
-		"playful",
-		"analytical",
-		"empathetic",
-	];
+	private toneDictionary = TONE_WORDS;
 	private task = "Teach the user, a non-technical person, how to use Obsidian";
 	private initialToneProgression = [
 		"blunt",
@@ -421,7 +413,7 @@ class ChatBot {
 				const y = baseY + (Math.random() * 50 - 25);
 
 				const position = {
-					id: `shape:tone-${index}`,
+					id: `shape:tone-${tone.tone}`,
 					x,
 					y,
 					text: tone.tone,

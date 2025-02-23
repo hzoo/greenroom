@@ -1,4 +1,4 @@
-import { signal, type Signal } from "@preact/signals-react";
+import { computed, signal, type Signal } from "@preact/signals-react";
 import type { Role } from "@11labs/client";
 import type ChatBot from "@/chatbot";
 
@@ -56,14 +56,18 @@ export function createPersistedSignal<T>(
 // Voice chat state
 export const transcript = signal<Array<{ message: string; source: Role }>>([]);
 export const isTranscriptOpen = signal(true);
-export const transcriptWidth = signal(320);
-export const isSpeaking = signal(false);
+export const transcriptWidth = createPersistedSignal("transcript-width", 320);
+export const isAgentSpeaking = signal(false);
 export const isUserSpeaking = signal(false);
+export const isSpeaking = computed(
+	() => isAgentSpeaking.value || isUserSpeaking.value,
+);
 export const isConnected = signal(false);
+export const isListening = signal(false);
 
 // Voice chat controls
 export const volume = signal(1);
-export const isPlaying = signal(false);
+export const isPaused = signal(true);
 
 // Chatbot state
 export const chatbot = signal<ChatBot | null>(null);

@@ -13,10 +13,11 @@ import {
 	debugPanelHeight,
 	DEFAULT_DEBUG_HEIGHT,
 	timelineDurationMinutes,
+	isPlaying,
 } from "@/store/whiteboard";
 import {
 	volume,
-	isPlaying,
+	isPaused,
 	isConnected,
 	isSpeaking,
 	isUserSpeaking,
@@ -24,8 +25,9 @@ import {
 } from "@/store/signals";
 import { cn } from "@/lib/utils";
 import { ChatPanel } from "@/components/ChatPanel";
-import { VoiceChat } from "@/components/VoiceChat";
 import ChatBot from "@/chatbot";
+import { initializeSpeechControl, speechControl } from "@/lib/voice/voiceSetup";
+import { batch } from "@preact/signals-react";
 
 // Constants
 const MIN_HEIGHT = 120;
@@ -90,11 +92,11 @@ const PlayStatus = memo(function PlayStatus() {
 			<div
 				className={cn(
 					"w-1.5 h-1.5 rounded-full transition-colors",
-					isPlaying.value ? "bg-green-500" : "bg-gray-500",
+					!isPaused.value ? "bg-green-500" : "bg-gray-500",
 				)}
 			/>
 			<span className="text-gray-400">
-				{isPlaying.value ? "Playing" : "Paused"}
+				{!isPaused.value ? "Playing" : "Paused"}
 			</span>
 		</div>
 	);
@@ -191,15 +193,24 @@ const StatsDisplay = memo(function StatsDisplay({
 const VoiceControls = memo(function VoiceControls() {
 	useSignals();
 
-	const handleStartStop = () => {
+	const handleStartStop = async () => {
 		if (isConnected.value) {
 			// Stop both conversation and timeline
-			isConnected.value = false;
-			isPlaying.value = false;
+			batch(() => {
+				isConnected.value = false;
+				isPaused.value = true;
+				isPlaying.value = false;
+			});
+			speechControl.stop();
 		} else {
 			// Start both conversation and timeline
-			isConnected.value = true;
-			isPlaying.value = true;
+			batch(() => {
+				isConnected.value = true;
+				isPaused.value = false;
+				isPlaying.value = true;
+			});
+
+			await speechControl.initialize();
 		}
 	};
 
@@ -264,15 +275,15 @@ const VoiceControls = memo(function VoiceControls() {
 			{/* Play/Pause button - only show when connected */}
 			{isConnected.value && (
 				<button
-					onClick={() => (isPlaying.value = !isPlaying.value)}
+					onClick={() => (isPaused.value = !isPaused.value)}
 					className={cn(
 						"px-2 py-1 rounded text-xs font-medium border",
-						isPlaying.value
+						!isPaused.value
 							? "bg-red-500/20 text-red-200 border-red-500/30 hover:bg-red-500/30"
 							: "bg-green-500/20 text-green-200 border-green-500/30 hover:bg-green-500/30",
 					)}
 				>
-					{isPlaying.value ? "Pause" : "Play"}
+					{!isPaused.value ? "Pause" : "Play"}
 				</button>
 			)}
 		</div>
@@ -360,7 +371,7 @@ export function ActiveDocuments() {
 		.filter((doc) => doc.id !== TIMELINE_CURSOR_ID)
 		.sort((a, b) => a.x - b.x);
 
-	// Initialize chatbot
+	// Initialize chatbot and voice control
 	useEffect(() => {
 		const initializeChatbot = async () => {
 			const bot = new ChatBot({
@@ -368,6 +379,8 @@ export function ActiveDocuments() {
 			});
 			await bot.initialize();
 			chatbot.value = bot;
+			// Initialize voice control after chatbot is ready
+			await initializeSpeechControl();
 		};
 
 		initializeChatbot();
@@ -435,9 +448,6 @@ export function ActiveDocuments() {
 			className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700/50 z-[9999] transition-colors"
 			style={{ height: `${debugPanelHeight.value}px` }}
 		>
-			{/* Mount VoiceChat component */}
-			<VoiceChat />
-
 			{/* Drag handle */}
 			<div
 				ref={dragRef}
