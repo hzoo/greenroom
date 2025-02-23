@@ -10,7 +10,7 @@ export function TldrawWrapper() {
 
 	const handleMount = (editorInstance: Editor) => {
 		// Initial setup
-		editorInstance.setCurrentTool("geo");
+		editorInstance.setCurrentTool("select");
 		editorInstance.user.updateUserPreferences({
 			animationSpeed: 1,
 			color: "dark",
