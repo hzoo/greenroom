@@ -342,6 +342,12 @@ visuals on the tldraw whiteboard:
   - we're mocking what it looks like to have recipient + agent -- normally that would be separate like in a phone call, and what the web ui is here is the driver's UI. But the purpose of having the transcript UI in there is to mock the "voice logs"
 
 
+- prompting improvements:
+  - agent shouldn't update the whiteboard state before the playhead
+  - strategize tone progression in a more bipolar way to demonstrate the steering capabilities
+  - generating the plan - should be timestamp and overall duration aware
+
+
 ## TODO:
 [ ] arrange only the future nodes past the timeline playhead, not past nodes
 [ ] examine why x and y are being distributed even before the playhead, they should only be distributed after the playhead
@@ -353,11 +359,6 @@ set of ui updates for the chatbot:
 [ ] below it should be the ai's last response
 [ ] and to the right should be the actual chat message history between the user and the ai
 
-
-- prompting improvements:
-  - agent shouldn't update the whiteboard state before the playhead
-  - strategize tone progression in a more bipolar way to demonstrate the steering capabilities
-  - generating the plan - should be timestamp and overall duration aware
 
 
 - check mic permissions on page load
