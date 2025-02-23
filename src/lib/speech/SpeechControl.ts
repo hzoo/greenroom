@@ -59,6 +59,7 @@ export class SpeechControl {
 	private silenceTimeout: ReturnType<typeof setTimeout> | null = null;
 	private currentTranscript = "";
 	private isAgentSpeaking = false;
+	private isPaused: boolean = false;
 
 	constructor(
 		config: SpeechControlConfig = {},
@@ -77,10 +78,20 @@ export class SpeechControl {
 			}
 
 			// Initialize audio context
-			this.audioContext = new (
-				window.AudioContext || window.webkitAudioContext
-			)();
-			this.audioQueue = new AudioQueueManager(this.audioContext);
+			if (!this.audioContext || this.audioContext.state === "closed") {
+				this.audioContext = new (
+					window.AudioContext || window.webkitAudioContext
+				)();
+				// Ensure context is running
+				if (this.audioContext.state === "suspended") {
+					await this.audioContext.resume();
+				}
+				this.audioQueue = new AudioQueueManager(this.audioContext);
+				debugLog("Audio context initialized", {
+					state: this.audioContext.state,
+					sampleRate: this.audioContext.sampleRate,
+				});
+			}
 
 			// Initialize speech recognition
 			await this.initializeSpeechRecognition();
@@ -263,11 +274,24 @@ export class SpeechControl {
 			throw new Error("Audio context or ElevenLabs API key not initialized");
 		}
 
+		// Check if context is closed or suspended
+		if (this.audioContext.state === "closed") {
+			debugLog("Audio context is closed, reinitializing...", null, "synthesis");
+			this.audioContext = new (
+				window.AudioContext || window.webkitAudioContext
+			)();
+			this.audioQueue = new AudioQueueManager(this.audioContext);
+		} else if (this.audioContext.state === "suspended") {
+			debugLog("Audio context is suspended, resuming...", null, "synthesis");
+			await this.audioContext.resume();
+		}
+
 		debugLog(
 			"Starting speech synthesis",
 			{
 				textLength: text.length,
 				timestamp: new Date().toISOString(),
+				contextState: this.audioContext.state,
 			},
 			"synthesis",
 		);
@@ -321,12 +345,54 @@ export class SpeechControl {
 			ws.onmessage = async (event) => {
 				const data = JSON.parse(event.data);
 				if (data.audio) {
+					// Check audio context state and try to reinitialize if needed
+					if (!this.audioContext || this.audioContext.state === "closed") {
+						debugLog(
+							"Audio context is closed, attempting to reinitialize...",
+							null,
+							"synthesis",
+						);
+						try {
+							this.audioContext = new (
+								window.AudioContext || window.webkitAudioContext
+							)();
+							await this.audioContext.resume();
+							this.audioQueue = new AudioQueueManager(this.audioContext);
+							debugLog(
+								"Successfully reinitialized audio context",
+								{
+									state: this.audioContext.state,
+									sampleRate: this.audioContext.sampleRate,
+								},
+								"synthesis",
+							);
+						} catch (error) {
+							debugLog("Failed to reinitialize audio context", null, "error");
+							ws.close();
+							return;
+						}
+					} else if (this.audioContext.state === "suspended") {
+						debugLog(
+							"Audio context is suspended, resuming...",
+							null,
+							"synthesis",
+						);
+						try {
+							await this.audioContext.resume();
+						} catch (error) {
+							debugLog("Failed to resume audio context", null, "error");
+							ws.close();
+							return;
+						}
+					}
+
 					debugLog(
 						"Received audio chunk",
 						{
 							length: data.audio.length,
 							isFinal: data.isFinal,
 							hasAlignment: !!data.alignment,
+							contextState: this.audioContext.state,
 						},
 						"synthesis",
 					);
@@ -364,8 +430,12 @@ export class SpeechControl {
 			ws.onclose = async () => {
 				debugLog("WebSocket connection closed", null, "synthesis");
 				// If we haven't processed the last chunk yet (no isFinal flag received)
-				// attach completion handler to the last chunk in the queue
-				if (!lastChunkProcessed && this.audioQueue) {
+				// and the context is still valid, attach completion handler to the last chunk
+				if (
+					!lastChunkProcessed &&
+					this.audioQueue &&
+					this.audioContext?.state === "running"
+				) {
 					const currentQueueLength = audioQueue.value.chunks.length;
 					if (currentQueueLength > 0) {
 						debugLog(
@@ -454,5 +524,32 @@ export class SpeechControl {
 					? "WebSocket error"
 					: "Unknown error";
 		this.handleError(new Error(errorMessage));
+	}
+
+	pause() {
+		this.isPaused = true;
+		if (this.recognition) {
+			this.recognition.stop();
+		}
+		if (this.audioContext?.state === "running") {
+			this.audioContext.suspend();
+			// Clear the audio queue when pausing
+			this.audioQueue?.clear();
+		}
+	}
+
+	resume() {
+		this.isPaused = false;
+		if (this.recognition) {
+			this.recognition.start();
+		}
+		if (this.audioContext?.state === "suspended") {
+			this.audioContext.resume().then(() => {
+				// Only recreate the audio queue after context is resumed
+				if (this.audioContext) {
+					this.audioQueue = new AudioQueueManager(this.audioContext);
+				}
+			});
+		}
 	}
 }

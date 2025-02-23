@@ -216,7 +216,7 @@ const TONE_SCHEMA = z.object({
 						.number()
 						.describe("when this tone should occur (in minutes from start)"),
 					status: z
-						.enum(["planned", "active", "completed"])
+						.enum(["planned", "active", "completed", "staged"])
 						.describe("current status of this tone in the progression"),
 					ready_for_transition: z
 						.boolean()

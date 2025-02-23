@@ -9,13 +9,22 @@ import {
 	isDebugOpen,
 	progress,
 	TIMELINE_WIDTH,
-	isPlaying,
 	markerPositions,
 	debugPanelHeight,
 	DEFAULT_DEBUG_HEIGHT,
 } from "@/store/whiteboard";
+import {
+	volume,
+	isPlaying,
+	isConnected,
+	isSpeaking,
+	isUserSpeaking,
+	chatbot,
+} from "@/store/signals";
 import { cn } from "@/lib/utils";
-import { ChatPanel } from "./ChatPanel";
+import { ChatPanel } from "@/components/ChatPanel";
+import { VoiceChat } from "@/components/VoiceChat";
+import ChatBot from "@/chatbot";
 
 // Constants
 const MIN_HEIGHT = 120;
@@ -175,7 +184,99 @@ const StatsDisplay = memo(function StatsDisplay({
 	);
 });
 
-// Optimized header that composes smaller components
+// Add VoiceControls component
+const VoiceControls = memo(function VoiceControls() {
+	useSignals();
+
+	const handleStartStop = () => {
+		if (isConnected.value) {
+			// Stop both conversation and timeline
+			isConnected.value = false;
+			isPlaying.value = false;
+		} else {
+			// Start both conversation and timeline
+			isConnected.value = true;
+			isPlaying.value = true;
+		}
+	};
+
+	return (
+		<div className="flex items-center gap-3 border-l border-gray-700/50 pl-3">
+			{/* Connection status */}
+			<div
+				className={cn(
+					"px-2 py-0.5 rounded-full text-xs font-medium",
+					isConnected.value
+						? isSpeaking.value
+							? "bg-blue-500/20 text-blue-200 border border-blue-500/30"
+							: isUserSpeaking.value
+								? "bg-green-500/20 text-green-200 border border-green-500/30"
+								: "bg-gray-500/20 text-gray-200 border border-gray-500/30"
+						: "bg-red-500/20 text-red-200 border border-red-500/30",
+				)}
+			>
+				{isConnected.value
+					? isSpeaking.value
+						? "Agent Speaking"
+						: isUserSpeaking.value
+							? "You're Speaking"
+							: "Agent Listening"
+					: "Disconnected"}
+			</div>
+
+			{/* Start/Stop button */}
+			<button
+				onClick={handleStartStop}
+				className={cn(
+					"px-3 py-1 rounded text-xs font-medium border",
+					isConnected.value
+						? "bg-red-500/20 text-red-200 border-red-500/30 hover:bg-red-500/30"
+						: "bg-green-500/20 text-green-200 border-green-500/30 hover:bg-green-500/30",
+				)}
+			>
+				{isConnected.value ? "Stop Conversation" : "Start Conversation"}
+			</button>
+
+			{/* Volume control - only show when connected */}
+			{isConnected.value && (
+				<div className="flex items-center gap-2">
+					<div className="text-xs text-gray-400">Volume</div>
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.1"
+						value={volume.value}
+						onChange={(e) => {
+							volume.value = Number.parseFloat(e.target.value);
+						}}
+						className="w-20 accent-blue-500"
+					/>
+					<div className="text-xs text-gray-400 font-mono w-8">
+						{Math.round(volume.value * 100)}%
+					</div>
+				</div>
+			)}
+
+			{/* Play/Pause button - only show when connected */}
+			{isConnected.value && (
+				<button
+					onClick={() => (isPlaying.value = !isPlaying.value)}
+					className={cn(
+						"px-2 py-1 rounded text-xs font-medium border",
+						isPlaying.value
+							? "bg-red-500/20 text-red-200 border-red-500/30 hover:bg-red-500/30"
+							: "bg-green-500/20 text-green-200 border-green-500/30 hover:bg-green-500/30",
+					)}
+				>
+					{isPlaying.value ? "Pause" : "Play"}
+				</button>
+			)}
+		</div>
+	);
+});
+
+// Update DebugHeader to include VoiceControls
 const DebugHeader = memo(function DebugHeader({
 	shapes,
 }: {
@@ -195,6 +296,7 @@ const DebugHeader = memo(function DebugHeader({
 						totalShapes={shapes.length}
 						activeShapes={activeDocuments.value.length}
 					/>
+					<VoiceControls />
 				</div>
 				<PositionDisplay />
 			</div>
@@ -255,6 +357,22 @@ export function ActiveDocuments() {
 		.filter((doc) => doc.id !== TIMELINE_CURSOR_ID)
 		.sort((a, b) => a.x - b.x);
 
+	// Initialize chatbot
+	useEffect(() => {
+		const initializeChatbot = async () => {
+			const bot = new ChatBot();
+			await bot.initialize();
+			chatbot.value = bot;
+		};
+
+		initializeChatbot();
+
+		return () => {
+			chatbot.value?.cleanup();
+			chatbot.value = null;
+		};
+	}, []);
+
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.altKey && e.code === "KeyD") {
@@ -312,6 +430,9 @@ export function ActiveDocuments() {
 			className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700/50 z-[9999] transition-colors"
 			style={{ height: `${debugPanelHeight.value}px` }}
 		>
+			{/* Mount VoiceChat component */}
+			<VoiceChat />
+
 			{/* Drag handle */}
 			<div
 				ref={dragRef}

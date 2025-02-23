@@ -1,10 +1,106 @@
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, memo } from "react";
 import { chatHistory, isChatLoading } from "@/store/whiteboard";
 import { cn } from "@/lib/utils";
-import ChatBot from "@/chatbot";
+import { AgentCircle } from "./VoiceChat";
+import {
+	transcript,
+	isTranscriptOpen,
+	transcriptWidth,
+	chatbot,
+} from "@/store/signals";
+import type { Role } from "@11labs/client";
 
-const chatbot = new ChatBot();
+// Transcript message component from VoiceChat.tsx
+const TranscriptMessage = memo(function TranscriptMessage({
+	message,
+	source,
+}: {
+	message: string;
+	source: Role;
+}) {
+	return (
+		<div
+			className={cn(
+				"p-2 rounded-lg text-sm",
+				source === "ai"
+					? "bg-blue-500/10 text-blue-200"
+					: "bg-green-500/10 text-green-200",
+			)}
+		>
+			{message}
+		</div>
+	);
+});
+
+// New VoiceTranscript component
+const VoiceTranscript = memo(function VoiceTranscript() {
+	useSignals();
+	const scrollRef = useRef<HTMLDivElement>(null);
+	const dragRef = useRef<HTMLDivElement>(null);
+
+	// Auto-scroll to bottom when new messages arrive
+	useEffect(() => {
+		if (scrollRef.current) {
+			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+		}
+	});
+
+	// Dragging logic
+	const handleDragStart = (e: React.MouseEvent) => {
+		e.preventDefault();
+		const startX = e.pageX;
+		const startWidth = transcriptWidth.value;
+
+		const handleDrag = (e: MouseEvent) => {
+			const delta = startX - e.pageX;
+			const newWidth = Math.min(Math.max(startWidth + delta, 240), 480);
+			transcriptWidth.value = newWidth;
+		};
+
+		const handleDragEnd = () => {
+			document.removeEventListener("mousemove", handleDrag);
+			document.removeEventListener("mouseup", handleDragEnd);
+		};
+
+		document.addEventListener("mousemove", handleDrag);
+		document.addEventListener("mouseup", handleDragEnd);
+	};
+
+	if (!isTranscriptOpen.value) return null;
+
+	return (
+		<div
+			className="relative border-l border-gray-700/50 bg-gray-800/30 backdrop-blur-sm overflow-hidden"
+			style={{ width: transcriptWidth.value }}
+		>
+			{/* Drag handle */}
+			<div
+				ref={dragRef}
+				className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/20 group"
+				onMouseDown={handleDragStart}
+			>
+				<div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gray-700/50 group-hover:bg-blue-500/50" />
+			</div>
+
+			{/* Content */}
+			<div className="flex flex-col h-full">
+				<div className="p-4">
+					<AgentCircle />
+				</div>
+				<div ref={scrollRef} className="flex-1 p-4 space-y-4 overflow-y-auto">
+					{transcript.value.map((msg, i) => (
+						<TranscriptMessage
+							key={`${msg.source}-${msg.message}-${i}`}
+							message={msg.message}
+							source={msg.source}
+						/>
+					))}
+				</div>
+			</div>
+		</div>
+	);
+});
 
 // Helper to format JSON content with syntax highlighting
 function formatContent(content: string) {
@@ -56,15 +152,10 @@ export function ChatPanel() {
 	const chatContainerRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		// Initialize chatbot
-		chatbot.initialize();
-
-		// Load history into signal
-		chatHistory.value = chatbot.getHistory();
-
-		return () => {
-			chatbot.cleanup();
-		};
+		// Load history into signal if chatbot exists
+		if (chatbot.value) {
+			chatHistory.value = chatbot.value.getHistory();
+		}
 	}, []);
 
 	// Separate effect for scrolling to avoid unnecessary dependencies
@@ -78,7 +169,7 @@ export function ChatPanel() {
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		const input = inputRef.current?.value.trim();
-		if (!input) return;
+		if (!input || !chatbot.value) return;
 
 		// Clear input
 		inputRef.current!.value = "";
@@ -87,17 +178,17 @@ export function ChatPanel() {
 			isChatLoading.value = true;
 
 			// Add user message
-			await chatbot.addMessage("user", input);
-			chatHistory.value = chatbot.getHistory();
+			await chatbot.value.addMessage("user", input);
+			chatHistory.value = chatbot.value.getHistory();
 
 			// Get AI response
-			const response = await chatbot.getAIResponse();
+			const response = await chatbot.value.getAIResponse();
 			if (response) {
-				await chatbot.addMessage(
+				await chatbot.value.addMessage(
 					"assistant",
 					JSON.stringify(response, null, 2),
 				);
-				chatHistory.value = chatbot.getHistory();
+				chatHistory.value = chatbot.value.getHistory();
 			}
 		} catch (error) {
 			console.error("Error in chat:", error);
@@ -119,31 +210,34 @@ export function ChatPanel() {
 				</div>
 			</div>
 
-			<div
-				ref={chatContainerRef}
-				className="flex-1 overflow-auto p-3 space-y-4 font-mono"
-			>
-				{chatHistory.value.map((msg, i) => (
-					<div
-						key={`${msg.role}-${msg.timestamp}`}
-						className={cn(
-							"rounded",
-							msg.role === "assistant"
-								? "text-sm"
-								: msg.role === "user"
-									? "bg-gray-800/30 border border-gray-700/20 p-2"
-									: "text-sm",
-						)}
-					>
-						{msg.role === "user" && (
-							<div className="flex items-center gap-2 mb-2">
-								<span className="text-green-400">$</span>
-								<span className="text-xs text-gray-400">user input:</span>
-							</div>
-						)}
-						{formatContent(msg.content)}
-					</div>
-				))}
+			<div className="flex flex-1">
+				<div
+					ref={chatContainerRef}
+					className="flex-1 overflow-auto p-3 space-y-4 font-mono"
+				>
+					{chatHistory.value.map((msg, i) => (
+						<div
+							key={`${msg.role}-${msg.timestamp}`}
+							className={cn(
+								"rounded",
+								msg.role === "assistant"
+									? "text-sm"
+									: msg.role === "user"
+										? "bg-gray-800/30 border border-gray-700/20 p-2"
+										: "text-sm",
+							)}
+						>
+							{msg.role === "user" && (
+								<div className="flex items-center gap-2 mb-2">
+									<span className="text-green-400">$</span>
+									<span className="text-xs text-gray-400">user input:</span>
+								</div>
+							)}
+							{formatContent(msg.content)}
+						</div>
+					))}
+				</div>
+				<VoiceTranscript />
 			</div>
 
 			<form

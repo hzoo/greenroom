@@ -1,4 +1,6 @@
 import { signal, type Signal } from "@preact/signals-react";
+import type { Role } from "@11labs/client";
+import type ChatBot from "@/chatbot";
 
 // Debounce helper with proper types
 function debounce<Args extends unknown[], R>(
@@ -50,3 +52,18 @@ export function createPersistedSignal<T>(
 		},
 	});
 }
+
+// Voice chat state
+export const transcript = signal<Array<{ message: string; source: Role }>>([]);
+export const isTranscriptOpen = signal(true);
+export const transcriptWidth = signal(320);
+export const isSpeaking = signal(false);
+export const isUserSpeaking = signal(false);
+export const isConnected = signal(false);
+
+// Voice chat controls
+export const volume = signal(1);
+export const isPlaying = signal(false);
+
+// Chatbot state
+export const chatbot = signal<ChatBot | null>(null);
