@@ -24,7 +24,7 @@ export const DEFAULT_DEBUG_HEIGHT = 320;
 // Global signals
 export const timelinePosition = signal(0);
 export const elapsedTime = signal(0);
-export const isPlaying = signal(true); // Default to playing
+export const isPlaying = signal(false); // Default to playing
 export const activeDocuments = signal<TLShapeId[]>([]);
 export const documents = signal<TLShape[]>([]);
 export const editor = signal<Editor | null>(null);
