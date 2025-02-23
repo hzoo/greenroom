@@ -303,6 +303,7 @@ export class SpeechControl {
 
 		// Track the completion handler
 		let completionHandler: (() => void) | undefined;
+		let hasError = false;
 
 		try {
 			const ws = new WebSocket(
@@ -315,6 +316,21 @@ export class SpeechControl {
 				this.isAgentSpeaking = false;
 				speechState.value = { ...speechState.value, isSpeaking: false };
 				this.resumeRecognition();
+			};
+
+			// Set up error recovery handler
+			const errorRecoveryHandler = () => {
+				if (!hasError) {
+					hasError = true;
+					debugLog(
+						"Error in audio processing, recovering speech recognition",
+						null,
+						"error",
+					);
+					this.isAgentSpeaking = false;
+					speechState.value = { ...speechState.value, isSpeaking: false };
+					this.resumeRecognition();
+				}
 			};
 
 			ws.onopen = () => {
@@ -368,6 +384,7 @@ export class SpeechControl {
 							);
 						} catch (error) {
 							debugLog("Failed to reinitialize audio context", null, "error");
+							errorRecoveryHandler();
 							ws.close();
 							return;
 						}
@@ -381,6 +398,7 @@ export class SpeechControl {
 							await this.audioContext.resume();
 						} catch (error) {
 							debugLog("Failed to resume audio context", null, "error");
+							errorRecoveryHandler();
 							ws.close();
 							return;
 						}
@@ -408,20 +426,25 @@ export class SpeechControl {
 						// If this is the last chunk before WebSocket closes, attach completion handler
 						if (!lastChunkProcessed && data.isFinal) {
 							lastChunkProcessed = true;
-							await this.audioQueue?.addToQueue(
-								arrayBuffer,
-								data.normalizedAlignment || data.alignment,
-								completionHandler,
-							);
+							await this.audioQueue
+								?.addToQueue(
+									arrayBuffer,
+									data.normalizedAlignment || data.alignment,
+									completionHandler,
+								)
+								.catch(errorRecoveryHandler);
 							ws.close();
 						} else {
 							// Process other chunks immediately without completion handler
-							await this.audioQueue?.addToQueue(
-								arrayBuffer,
-								data.normalizedAlignment || data.alignment,
-							);
+							await this.audioQueue
+								?.addToQueue(
+									arrayBuffer,
+									data.normalizedAlignment || data.alignment,
+								)
+								.catch(errorRecoveryHandler);
 						}
 					} catch (error) {
+						errorRecoveryHandler();
 						this.handleError(error as Error);
 					}
 				}
@@ -455,11 +478,12 @@ export class SpeechControl {
 							...audioQueue.value,
 							chunks: audioQueue.value.chunks.slice(0, -1),
 						};
-						await this.audioQueue.addToQueue(
-							arrayBuffer,
-							lastChunk.alignment,
-							completionHandler,
-						);
+						await this.audioQueue
+							.addToQueue(arrayBuffer, lastChunk.alignment, completionHandler)
+							.catch(errorRecoveryHandler);
+					} else {
+						// If no chunks were processed successfully, recover
+						errorRecoveryHandler();
 					}
 				}
 			};
@@ -467,16 +491,12 @@ export class SpeechControl {
 			ws.onerror = (error: Event) => {
 				this.handleWebSocketError(error);
 				this.audioQueue?.clear();
-				this.isAgentSpeaking = false;
-				speechState.value = { ...speechState.value, isSpeaking: false };
-				this.resumeRecognition();
+				errorRecoveryHandler();
 				ws.close();
 			};
 		} catch (error) {
+			errorRecoveryHandler();
 			this.handleError(error as Error);
-			this.isAgentSpeaking = false;
-			speechState.value = { ...speechState.value, isSpeaking: false };
-			this.resumeRecognition();
 		}
 	}
 
