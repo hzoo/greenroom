@@ -6,6 +6,62 @@ import { cn } from "@/lib/utils";
 import { createPersistedSignal } from "@/store/signals";
 import ChatBot from "@/chatbot";
 
+// Add at the top of the file after imports
+declare global {
+	interface Window {
+		SpeechRecognition: typeof SpeechRecognition;
+		webkitSpeechRecognition: typeof SpeechRecognition;
+		AudioContext: typeof AudioContext;
+		webkitAudioContext: typeof AudioContext;
+	}
+}
+
+// Add type definitions for Web Speech API
+interface SpeechRecognitionEvent extends Event {
+	resultIndex: number;
+	results: {
+		[key: number]: {
+			[key: number]: {
+				transcript: string;
+				confidence: number;
+			};
+			isFinal: boolean;
+			length: number;
+		};
+		length: number;
+	};
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+	error:
+		| "no-speech"
+		| "aborted"
+		| "audio-capture"
+		| "network"
+		| "not-allowed"
+		| "service-not-allowed"
+		| "bad-grammar"
+		| "language-not-supported";
+	message?: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+	continuous: boolean;
+	interimResults: boolean;
+	lang: string;
+	onresult:
+		| ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any)
+		| null;
+	onerror:
+		| ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any)
+		| null;
+	onend: ((this: SpeechRecognition, ev: Event) => any) | null;
+	onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
+	start(): void;
+	stop(): void;
+	abort(): void;
+}
+
 // Debug logging for signal changes
 function debugLog(
 	message: string,
@@ -827,6 +883,9 @@ async function speakText(text: string) {
 	};
 }
 
+// Update the recognition signal type
+export const recognition = signal<SpeechRecognition | null>(null);
+
 // Replace startConversation with our own implementation
 async function startConversation() {
 	debugLog("Starting conversation...");
@@ -835,6 +894,24 @@ async function startConversation() {
 		if (!hasPermission) {
 			debugLog("Microphone permission denied");
 			alert("Microphone permission is required for the conversation.");
+			return;
+		}
+
+		// Initialize AudioContext first
+		try {
+			const ctx = new (window.AudioContext || window.webkitAudioContext)();
+			audioContext.value = ctx;
+			debugLog(
+				"Audio context initialized",
+				{
+					sampleRate: ctx.sampleRate,
+					state: ctx.state,
+				},
+				"system",
+			);
+		} catch (error) {
+			console.error("Failed to initialize audio context:", error);
+			alert("Failed to initialize audio system. Please try again.");
 			return;
 		}
 
@@ -851,83 +928,133 @@ async function startConversation() {
 		await bot.initialize();
 		chatbot.value = bot;
 
-		// Initialize audio context and analyzer for speech detection
-		const context = new AudioContext();
-		audioContext.value = context;
-
-		// Set up audio stream for microphone
-		const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-		audioStream.value = stream;
-
-		// Create analyzer node for speech detection
-		const analyzer = context.createAnalyser();
-		analyzer.fftSize = 2048;
-		const source = context.createMediaStreamSource(stream);
-		source.connect(analyzer);
-
-		speechDetector.value = { context, analyzer, source };
-
-		// Start speech detection loop
-		let silenceStart = Date.now();
-		const silenceThreshold = -50; // dB
-		const silenceTimeout = 1000; // ms
-
-		function detectSpeech() {
-			if (!isListening.value || !speechDetector.value) return;
-
-			const { analyzer } = speechDetector.value;
-			const dataArray = new Float32Array(analyzer.frequencyBinCount);
-			analyzer.getFloatFrequencyData(dataArray);
-
-			// Calculate average volume
-			const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-
-			if (average > silenceThreshold) {
-				if (!isUserSpeaking.value) {
-					debugLog("User started speaking", { volume: average }, "user");
-					isUserSpeaking.value = true;
-				}
-				silenceStart = Date.now();
-			} else if (
-				isUserSpeaking.value &&
-				Date.now() - silenceStart > silenceTimeout
-			) {
-				debugLog(
-					"User stopped speaking",
-					{ silenceDuration: Date.now() - silenceStart },
-					"user",
-				);
-				isUserSpeaking.value = false;
-				// TODO: Trigger speech-to-text processing here
-			}
-
-			requestAnimationFrame(detectSpeech);
+		// Initialize Web Speech API recognition
+		const SpeechRecognition =
+			window.SpeechRecognition || window.webkitSpeechRecognition;
+		if (!SpeechRecognition) {
+			debugLog(
+				"Speech recognition not supported in this browser",
+				null,
+				"system",
+			);
+			alert("Speech recognition is not supported in your browser.");
+			return;
 		}
 
-		// Start listening
-		isListening.value = true;
-		isConnected.value = true;
-		detectSpeech();
+		const recognizer = new SpeechRecognition();
+		recognizer.continuous = true;
+		recognizer.interimResults = true;
+		recognizer.lang = "en-US";
 
-		// Handle user speech end and generate response
-		effect(() => {
-			if (!isUserSpeaking.value && chatbot.value) {
-				// TODO: Get speech-to-text transcript and process it
-				const mockTranscript = "This is a mock transcript"; // Replace with actual STT
-				chatbot.value
-					.handleVoiceTranscript(mockTranscript, "user")
-					.then((response) => {
-						if (response) {
-							speakText(response.response.content);
-							transcript.value = [
-								...transcript.value,
-								{ message: mockTranscript, source: "user" },
-								{ message: response.response.content, source: "ai" },
-							];
-						}
-					});
+		debugLog(
+			"Initializing speech recognition",
+			{
+				continuous: recognizer.continuous,
+				interimResults: recognizer.interimResults,
+				lang: recognizer.lang,
+			},
+			"system",
+		);
+
+		// Handle recognition results
+		let currentTranscript = "";
+		recognizer.onresult = (event) => {
+			let interimTranscript = "";
+			let finalTranscript = "";
+
+			for (let i = event.resultIndex; i < event.results.length; i++) {
+				const transcript = event.results[i][0].transcript;
+				if (event.results[i].isFinal) {
+					finalTranscript += transcript;
+					debugLog("Final transcript", { transcript }, "speech");
+				} else {
+					interimTranscript += transcript;
+					debugLog("Interim transcript", { transcript }, "speech");
+				}
 			}
-		});
+
+			if (finalTranscript) {
+				currentTranscript = finalTranscript;
+				isUserSpeaking.value = false;
+
+				// Process final transcript
+				if (chatbot.value) {
+					debugLog(
+						"Processing final transcript for response",
+						{
+							transcript: finalTranscript,
+							currentTone: chatbot.value.getCurrentToneState()?.tone,
+						},
+						"speech",
+					);
+
+					chatbot.value
+						.handleVoiceTranscript(finalTranscript, "user")
+						.then((response) => {
+							if (response) {
+								debugLog(
+									"Generated response",
+									{
+										text: response.response.content,
+										tone: response.tone.current,
+										intent: response.response.intent,
+									},
+									"speech",
+								);
+
+								speakText(response.response.content);
+								transcript.value = [
+									...transcript.value,
+									{ message: finalTranscript, source: "user" },
+									{ message: response.response.content, source: "ai" },
+								];
+							}
+						})
+						.catch((error) => {
+							console.error("Error generating response:", error);
+							debugLog("Failed to generate response", { error }, "speech");
+						});
+				}
+			} else if (interimTranscript) {
+				currentTranscript = interimTranscript;
+				isUserSpeaking.value = true;
+				debugLog(
+					"User speaking",
+					{
+						transcript: interimTranscript,
+						volume: conversation.value?.getInputVolume() || 0,
+					},
+					"user",
+				);
+			}
+		};
+
+		// Handle recognition events
+		recognizer.onstart = () => {
+			debugLog("Speech recognition started", null, "system");
+			isListening.value = true;
+			isConnected.value = true;
+		};
+
+		recognizer.onerror = (event) => {
+			debugLog("Speech recognition error", { error: event.error }, "system");
+			if (event.error === "no-speech") {
+				// Restart recognition if it stops due to no speech
+				recognizer.start();
+			}
+		};
+
+		recognizer.onend = () => {
+			debugLog("Speech recognition ended", null, "system");
+			// Restart recognition if it ends while we're still listening
+			if (isListening.value) {
+				recognizer.start();
+			}
+		};
+
+		// Store recognition instance and start listening
+		recognition.value = recognizer;
+		recognizer.start();
 	} catch (error) {
 		debugLog("Error starting conversation:", error);
 		console.error("Error starting conversation:", error);
@@ -935,9 +1062,15 @@ async function startConversation() {
 	}
 }
 
-// Update endConversation to clean up our new resources
+// Update endConversation to clean up speech recognition
 async function endConversation() {
 	debugLog("Ending conversation...");
+
+	// Stop speech recognition
+	if (recognition.value) {
+		recognition.value.stop();
+		recognition.value = null;
+	}
 
 	// Stop listening
 	isListening.value = false;
@@ -945,36 +1078,75 @@ async function endConversation() {
 	isSpeaking.value = false;
 	isUserSpeaking.value = false;
 
-	// Clean up audio resources
-	if (speechDetector.value) {
-		speechDetector.value.source.disconnect();
-		speechDetector.value = null;
-	}
-
-	if (audioStream.value) {
-		audioStream.value.getTracks().forEach((track) => track.stop());
-		audioStream.value = null;
-	}
-
-	if (audioContext.value) {
-		await audioContext.value.close();
-		audioContext.value = null;
-	}
-
 	// Clean up ChatBot
 	chatbot.value = null;
 
-	// Clear audio queue
+	// Clear audio queue and close audio context
 	if (audioContext.value) {
 		const queueManager = new AudioQueueManager(audioContext.value);
 		queueManager.clear();
+		await audioContext.value.close();
+		audioContext.value = null;
+		debugLog("Audio context closed", null, "system");
 	}
 
 	debugLog("Conversation ended");
 }
 
+// Move these to be component-level constants
+const SILENCE_THRESHOLD = 0.1; // Adjust based on testing
+const SILENCE_DURATION = 1500; // 1.5 seconds of silence before considering speech ended
+
 export function VoiceChat() {
 	useSignals();
+
+	// Add silence detection state
+	const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const currentTranscriptRef = useRef("");
+
+	// Add silence detection effect
+	useSignalEffect(() => {
+		if (!isUserSpeaking.value || !conversation.value) return;
+
+		const checkSilence = () => {
+			const volume = conversation.value?.getInputVolume() || 0;
+			debugLog(
+				"Checking silence",
+				{ volume, threshold: SILENCE_THRESHOLD },
+				"speech",
+			);
+
+			if (volume < SILENCE_THRESHOLD) {
+				if (!silenceTimeoutRef.current) {
+					silenceTimeoutRef.current = setTimeout(() => {
+						debugLog(
+							"Silence detected, ending speech",
+							{
+								duration: SILENCE_DURATION,
+								finalTranscript: currentTranscriptRef.current,
+							},
+							"speech",
+						);
+						isUserSpeaking.value = false;
+					}, SILENCE_DURATION);
+				}
+			} else {
+				if (silenceTimeoutRef.current) {
+					clearTimeout(silenceTimeoutRef.current);
+					silenceTimeoutRef.current = null;
+				}
+			}
+		};
+
+		const intervalId = setInterval(checkSilence, 100);
+		return () => {
+			clearInterval(intervalId);
+			if (silenceTimeoutRef.current) {
+				clearTimeout(silenceTimeoutRef.current);
+				silenceTimeoutRef.current = null;
+			}
+		};
+	});
 
 	useEffect(() => {
 		// Get agent ID from URL parameters
@@ -989,11 +1161,89 @@ export function VoiceChat() {
 		}
 
 		return () => {
-			// if (conversation.value) {
-			// 	conversation.value.endSession();
-			// }
+			// Clean up silence detection
+			if (silenceTimeoutRef.current) {
+				clearTimeout(silenceTimeoutRef.current);
+				silenceTimeoutRef.current = null;
+			}
 		};
 	}, []);
+
+	// Update the recognition.onresult handler to use currentTranscriptRef
+	useEffect(() => {
+		if (recognition.value) {
+			recognition.value.onresult = (event) => {
+				let interimTranscript = "";
+				let finalTranscript = "";
+
+				for (let i = event.resultIndex; i < event.results.length; i++) {
+					const transcript = event.results[i][0].transcript;
+					if (event.results[i].isFinal) {
+						finalTranscript += transcript;
+						debugLog("Final transcript", { transcript }, "speech");
+					} else {
+						interimTranscript += transcript;
+						debugLog("Interim transcript", { transcript }, "speech");
+					}
+				}
+
+				if (finalTranscript) {
+					currentTranscriptRef.current = finalTranscript;
+					isUserSpeaking.value = false;
+
+					// Process final transcript
+					if (chatbot.value) {
+						debugLog(
+							"Processing final transcript for response",
+							{
+								transcript: finalTranscript,
+								currentTone: chatbot.value.getCurrentToneState()?.tone,
+							},
+							"speech",
+						);
+
+						chatbot.value
+							.handleVoiceTranscript(finalTranscript, "user")
+							.then((response) => {
+								if (response) {
+									debugLog(
+										"Generated response",
+										{
+											text: response.response.content,
+											tone: response.tone.current,
+											intent: response.response.intent,
+										},
+										"speech",
+									);
+
+									speakText(response.response.content);
+									transcript.value = [
+										...transcript.value,
+										{ message: finalTranscript, source: "user" },
+										{ message: response.response.content, source: "ai" },
+									];
+								}
+							})
+							.catch((error) => {
+								console.error("Error generating response:", error);
+								debugLog("Failed to generate response", { error }, "speech");
+							});
+					}
+				} else if (interimTranscript) {
+					currentTranscriptRef.current = interimTranscript;
+					isUserSpeaking.value = true;
+					debugLog(
+						"User speaking",
+						{
+							transcript: interimTranscript,
+							volume: conversation.value?.getInputVolume() || 0,
+						},
+						"user",
+					);
+				}
+			};
+		}
+	}, [recognition.value]);
 
 	return (
 		<>
