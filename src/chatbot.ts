@@ -61,6 +61,16 @@ Your role:
 - Dynamically adjust the tone progression plan based on recipient responses
 - Respect and adapt to driver (human operator) modifications of the tone progression
 
+Available Tones:
+You have access to the following tones for crafting your responses and planning progressions:
+{{toneDictionary}}
+
+Choose tones that best match the conversation needs and user requests. You can:
+- Use any combination of these tones
+- Transition between them naturally
+- Blend compatible tones
+- Sequence them based on conversation needs
+
 Input format for each turn:
 1. Task goal: The overall objective to accomplish through conversation
 2. Conversation duration: Total expected duration of the conversation (can range from 1 to 30 minutes)
@@ -343,6 +353,34 @@ class ChatBot {
 			"patient",
 			"collaborative",
 			"analytical",
+			"diplomatic",
+			"encouraging",
+			"reassuring",
+			"understanding",
+			"knowledgeable",
+			"adaptable",
+			"clear",
+			"respectful",
+			"engaging",
+			"thoughtful",
+			"methodical",
+			"pragmatic",
+			"approachable",
+			"confident",
+			"detailed",
+			"efficient",
+			"focused",
+			"gentle",
+			"helpful",
+			"innovative",
+			"logical",
+			"motivating",
+			"nurturing",
+			"organized",
+			"proactive",
+			"reliable",
+			"systematic",
+			"thorough",
 		],
 		private task = "Teach the user, a non-technical person, how to use Obsidian",
 		private initialToneProgression = [
@@ -619,7 +657,13 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 		}
 
 		return [
-			{ role: "system" as const, content: this.systemPrompt },
+			{
+				role: "system" as const,
+				content: this.systemPrompt.replace(
+					"{{toneDictionary}}",
+					this.toneDictionary.join(", "),
+				),
+			},
 			{ role: "user" as const, content: formattedContext },
 		];
 	}
