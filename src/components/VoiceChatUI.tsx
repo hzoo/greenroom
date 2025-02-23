@@ -71,7 +71,7 @@ const VolumeControl = memo(function VolumeControl() {
 });
 
 // Agent Circle Component
-const AgentCircle = memo(function AgentCircle() {
+export const AgentCircle = memo(function AgentCircle() {
 	useSignals();
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const { isSpeaking } = speechState.value;

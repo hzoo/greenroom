@@ -1,12 +1,9 @@
 import { signal, effect } from "@preact/signals-react";
-import type { Role } from "@11labs/client";
 import { useEffect, memo, useRef, useMemo } from "react";
 import { useSignalEffect, useSignals } from "@preact/signals-react/runtime";
 import { cn } from "@/lib/utils";
 import { createPersistedSignal, chatbot, volume } from "@/store/signals";
-import ChatBot from "@/chatbot";
 import { SpeechControl, speechState } from "@/lib/speech/SpeechControl";
-import { VoiceChatUI } from "./VoiceChatUI";
 import {
 	isPlaying,
 	isConnected,
@@ -287,8 +284,6 @@ export function VoiceChat() {
 				},
 				onError: (error) => {
 					console.error("Speech control error:", error);
-					isConnected.value = false;
-					isPlaying.value = false;
 				},
 			},
 		);
@@ -314,8 +309,6 @@ export function VoiceChat() {
 				})
 				.catch((error) => {
 					console.error("Failed to start conversation:", error);
-					isConnected.value = false;
-					isPlaying.value = false;
 				});
 		} else {
 			debugLog("Stopping speech control...", null, "speech");
