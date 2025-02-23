@@ -4,6 +4,7 @@ import type { Role } from "@11labs/client";
 import { useEffect, memo, useRef } from "react";
 import { useSignalEffect, useSignals } from "@preact/signals-react/runtime";
 import { cn } from "@/lib/utils";
+import { createPersistedSignal } from "@/store/signals";
 
 // Debug logging for signal changes
 function debugLog(message: string, data?: unknown) {
@@ -16,18 +17,32 @@ function debugLog(message: string, data?: unknown) {
 }
 
 // Conversation state signals
-const conversation = signal<Conversation | null>(null);
-const isConnected = signal(false);
-const isSpeaking = signal(false);
-const isUserSpeaking = signal(false);
-const agentName = signal<string>("");
-const agentId = signal<string>("");
-const volume = signal(1);
-const transcript = signal<Array<{ message: string; source: Role }>>([]);
+export const conversation = signal<Conversation | null>(null);
+export const isConnected = signal(false);
+export const isSpeaking = signal(false);
+export const isUserSpeaking = signal(false);
+export const agentName = signal<string>("");
+export const agentId = signal<string>("");
+export const volume = signal(1);
+export const transcript = signal<Array<{ message: string; source: Role }>>([]);
 
 // Debug mode signal
 const isDebugMode = signal(true);
 const debugPanelHeight = signal(300);
+
+// Debounce volume changes for conversation
+effect(() => {
+	const conv = conversation.value;
+	if (!conv) return;
+	const timeoutId = setTimeout(() => {
+		conv.setVolume({ volume: volume.value });
+	}, 200); // 200ms debounce
+	return () => clearTimeout(timeoutId);
+});
+
+// Transcript sidebar state
+export const isTranscriptOpen = signal(true);
+export const transcriptWidth = createPersistedSignal("transcript-width", 320);
 
 // Mock conversation for debug mode
 const mockConversation = {
@@ -131,9 +146,6 @@ const VolumeControl = memo(function VolumeControl() {
 				value={volume.value}
 				onChange={(e) => {
 					volume.value = Number.parseFloat(e.target.value);
-					if (conversation.value) {
-						conversation.value.setVolume({ volume: volume.value });
-					}
 				}}
 				className="w-24 accent-blue-500"
 			/>
@@ -262,6 +274,7 @@ const TranscriptMessage = memo(function TranscriptMessage({
 const TranscriptSidebar = memo(function TranscriptSidebar() {
 	useSignals();
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const dragRef = useRef<HTMLDivElement>(null);
 
 	// Auto-scroll to bottom when new messages arrive
 	useEffect(() => {
@@ -270,15 +283,67 @@ const TranscriptSidebar = memo(function TranscriptSidebar() {
 		}
 	});
 
-	if (!isConnected.value) return null;
+	// Dragging logic
+	const handleDragStart = (e: React.MouseEvent) => {
+		e.preventDefault();
+		const startX = e.pageX;
+		const startWidth = transcriptWidth.value;
+
+		const handleDrag = (e: MouseEvent) => {
+			const delta = startX - e.pageX;
+			const newWidth = Math.min(Math.max(startWidth + delta, 240), 480);
+			transcriptWidth.value = newWidth;
+		};
+
+		const handleDragEnd = () => {
+			document.removeEventListener("mousemove", handleDrag);
+			document.removeEventListener("mouseup", handleDragEnd);
+		};
+
+		document.addEventListener("mousemove", handleDrag);
+		document.addEventListener("mouseup", handleDragEnd);
+	};
+
+	if (!isConnected.value || !isTranscriptOpen.value) return null;
 
 	return (
 		<div
-			className="w-80 border-l border-gray-700/50 bg-gray-800/30 backdrop-blur-sm p-4 overflow-y-auto"
-			ref={scrollRef}
+			className="relative border-l border-gray-700/50 bg-gray-800/30 backdrop-blur-sm overflow-hidden"
+			style={{ width: transcriptWidth.value }}
 		>
-			<div className="text-sm font-medium text-gray-400 mb-4">Transcript</div>
-			<div className="space-y-4">
+			{/* Drag handle */}
+			<div
+				ref={dragRef}
+				className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/20 group"
+				onMouseDown={handleDragStart}
+			>
+				<div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gray-700/50 group-hover:bg-blue-500/50" />
+			</div>
+
+			{/* Header */}
+			<div className="flex items-center justify-between h-9 px-3 border-b border-gray-700/50">
+				<div className="text-sm font-medium text-gray-400">Transcript</div>
+				<button
+					onClick={() => (isTranscriptOpen.value = false)}
+					className="text-gray-400 hover:text-gray-300"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 20 20"
+						fill="currentColor"
+						className="w-4 h-4"
+					>
+						<path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+					</svg>
+				</button>
+			</div>
+
+			{/* Content */}
+			<div
+				ref={scrollRef}
+				className="p-4 space-y-4 overflow-y-auto"
+				style={{ height: "calc(100% - 36px)" }}
+			>
 				{transcript.value.map((msg, i) => (
 					<TranscriptMessage
 						key={`${msg.source}-${msg.message}-${i}`}
@@ -288,6 +353,28 @@ const TranscriptSidebar = memo(function TranscriptSidebar() {
 				))}
 			</div>
 		</div>
+	);
+});
+
+// Add a toggle button component
+const TranscriptToggle = memo(function TranscriptToggle() {
+	useSignals();
+	if (isTranscriptOpen.value || !isConnected.value) return null;
+
+	return (
+		<button
+			onClick={() => (isTranscriptOpen.value = true)}
+			className="absolute right-4 bottom-4 p-2 rounded-full bg-gray-800 border border-gray-700/50 text-gray-400 hover:text-gray-300 hover:bg-gray-700"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 20 20"
+				fill="currentColor"
+				className="w-5 h-5"
+			>
+				<path d="M3.505 2.365A41.369 41.369 0 019 2c1.863 0 3.697.124 5.495.365 1.247.167 2.18 1.108 2.435 2.268a4.45 4.45 0 00-.577-.069 43.141 43.141 0 00-4.706 0C9.229 4.696 7.5 6.727 7.5 8.998v2.24c0 1.413.67 2.735 1.76 3.562l-2.98 2.98A.75.75 0 015 17.25v-3.443c-.501-.048-1-.106-1.495-.172C2.033 13.438 1 12.162 1 10.72V5.28c0-1.441 1.033-2.717 2.505-2.914z" />
+			</svg>
+		</button>
 	);
 });
 
@@ -418,6 +505,8 @@ const DebugPanel = memo(function DebugPanel() {
 			if (e.altKey && e.code === "KeyD") {
 				e.preventDefault();
 				isDebugMode.value = !isDebugMode.value;
+			} else if (e.altKey && e.code === "KeyT") {
+				isTranscriptOpen.value = !isTranscriptOpen.value;
 			}
 		};
 
@@ -614,7 +703,7 @@ export function VoiceChat() {
 		<>
 			<div className="flex flex-col h-screen bg-gray-900 text-gray-100">
 				{/* Top toolbar */}
-				<div className="flex justify-between items-center p-4 bg-gray-800/50 backdrop-blur-sm border-b border-gray-700/50">
+				<div className="h-14 flex justify-between items-center px-4 bg-gray-800/50 backdrop-blur-sm border-b border-gray-700/50">
 					<div className="flex items-center gap-4">
 						<h2 className="text-sm font-medium text-gray-300">
 							{agentName.value || "Voice Chat"}
@@ -666,6 +755,7 @@ export function VoiceChat() {
 								<AgentCircle />
 							)}
 						</div>
+						<TranscriptToggle />
 					</div>
 
 					<TranscriptSidebar />
