@@ -299,11 +299,7 @@ visuals on the tldraw whiteboard:
 [x] appropriately sized boxes (zoom factor, canvas size, text size)
 [x] dark mode with more professional text
 
-## TODO:
-[ ] arrange only the future nodes past the timeline playhead, not past nodes
-[ ] examine why x and y are being distributed even before the playhead, they should only be distributed after the playhead
-
-[ ] working end to end of voice agent being informed by the chatbot plan
+[x] working end to end of voice agent being informed by the chatbot plan
   - Integration between ChatBot and VoiceChat:
     1. Extended ChatBot class to:
       - Add method to get current tone and response for voice agent
@@ -346,10 +342,25 @@ visuals on the tldraw whiteboard:
   - we're mocking what it looks like to have recipient + agent -- normally that would be separate like in a phone call, and what the web ui is here is the driver's UI. But the purpose of having the transcript UI in there is to mock the "voice logs"
 
 
+## TODO:
+[ ] arrange only the future nodes past the timeline playhead, not past nodes
+[ ] examine why x and y are being distributed even before the playhead, they should only be distributed after the playhead
+
+
+
 set of ui updates for the chatbot:
 [ ] update context view so that it's not a chat but rather shows the list of the past user's prompts
 [ ] below it should be the ai's last response
 [ ] and to the right should be the actual chat message history between the user and the ai
+
+
+- prompting improvements - don't 
+- check the timestamp issus in the context
+- check mic permissions on page load
+- driver chanigng whiteboaard should very clearly show the 
+  - the mood words should be really jarring like a bipolar agent -- "blunt" etc (the point is that the agent might not do what you want, but it's not all, or nothing)
+  - to show that behavior is very steerable -- for new people to ai
+- demo script using the devpost text as seed and guide claude to do the most compelling things
 
 Later:
 
