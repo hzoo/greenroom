@@ -1,6 +1,6 @@
 import { transformShapes } from "../lib/utils";
 import { signal, effect, computed } from "@preact/signals-react";
-import type { Editor, TLShape, TLShapeId, TLRecord, RecordsDiff } from "tldraw";
+import type { Editor, TLShape, TLShapeId } from "tldraw";
 import type { SimpleShape } from "../lib/utils";
 import { createPersistedSignal } from "./signals";
 
@@ -80,12 +80,52 @@ export const SYSTEM_SHAPE_IDS = [
 	TIMELINE_BOX_ID,
 ] as readonly TLShapeId[];
 
+// Helper function to calculate size based on text length
+export const calculateShapeSize = (text: string) => {
+	const height = 68; // Fixed height for all boxes
+	const charWidth = 14; // Width per character in mono font
+	const horizontalPadding = 32; // Padding on both sides to prevent text touching edges
+	const maxWidth = 200; // Maximum width
+
+	// Calculate width with max limit
+	const width = Math.min(maxWidth, text.length * charWidth + horizontalPadding);
+
+	return {
+		w: width,
+		h: height,
+	};
+};
+
 // Initial shape positions
 const INITIAL_SHAPES = [
-	{ x: 100, y: 100, color: "yellow", text: "casual" },
-	{ x: 300, y: 150, color: "orange", text: "enthusiastic" },
-	{ x: 500, y: 200, color: "green", text: "friendly" },
-	{ x: 700, y: 250, color: "blue", text: "supportive" },
+	{
+		x: 100,
+		y: 100,
+		color: "yellow",
+		text: "casual",
+		...calculateShapeSize("casual"),
+	},
+	{
+		x: 300,
+		y: 150,
+		color: "orange",
+		text: "enthusiastic",
+		...calculateShapeSize("enthusiastic"),
+	},
+	{
+		x: 500,
+		y: 200,
+		color: "green",
+		text: "friendly",
+		...calculateShapeSize("friendly"),
+	},
+	{
+		x: 700,
+		y: 250,
+		color: "blue",
+		text: "supportive",
+		...calculateShapeSize("supportive"),
+	},
 ] as const;
 
 // Helper functions to create tone shapes with jitter
@@ -105,7 +145,7 @@ export const createToneShapes = (editorInstance: Editor) => {
 	if (existingShapes.length > 0) return;
 
 	// Create tone shapes with vertical scatter and horizontal jitter
-	INITIAL_SHAPES.forEach(({ x, y, color, text }) => {
+	INITIAL_SHAPES.forEach(({ x, y, color, text, w, h }) => {
 		const jitteredX = addRandomJitter(x, HORIZONTAL_JITTER_RANGE);
 		const scatteredY = addRandomJitter(y, VERTICAL_SCATTER_RANGE);
 
@@ -117,8 +157,8 @@ export const createToneShapes = (editorInstance: Editor) => {
 				props: {
 					geo: "rectangle",
 					color,
-					w: 100,
-					h: 50,
+					w,
+					h,
 					text,
 					font: "mono",
 				},
@@ -397,6 +437,11 @@ effect(() => {
 export const setupEditorListeners = (editorInstance: Editor) => {
 	editor.value = editorInstance;
 
+	// Create initial shapes and setup
+	createTimelineBox();
+	createTimelineCursor();
+	createToneShapes(editorInstance);
+
 	// Listen for shape changes
 	editorInstance.on("change", (change) => {
 		// Check if any shapes were updated
@@ -413,11 +458,6 @@ export const setupEditorListeners = (editorInstance: Editor) => {
 			updateShapes();
 		}
 	});
-
-	// Create initial shapes and setup
-	createTimelineBox();
-	createTimelineCursor();
-	createToneShapes(editorInstance);
 };
 
 // Chat signals
