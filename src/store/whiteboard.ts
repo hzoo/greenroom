@@ -7,7 +7,7 @@ import { createPersistedSignal } from "./signals";
 // Constants
 const SPEED = 10; // pixels per second
 export const TIMELINE_WIDTH = 2000;
-export const TIMELINE_HEIGHT = 2000;
+export const TIMELINE_HEIGHT = 1200;
 export const TIMELINE_CURSOR_ID = "shape:timeline-cursor" as TLShapeId;
 export const TIMELINE_BOX_ID = "shape:timeline-box" as TLShapeId;
 export const DEFAULT_DEBUG_HEIGHT = 320;
@@ -100,29 +100,29 @@ export const calculateShapeSize = (text: string) => {
 const INITIAL_SHAPES = [
 	{
 		x: 100,
-		y: 100,
-		color: "yellow",
+		y: 0,
+		color: getColorForStatus("future"),
 		text: "casual",
 		...calculateShapeSize("casual"),
 	},
 	{
 		x: 300,
-		y: 150,
-		color: "orange",
+		y: TIMELINE_HEIGHT * -0.15,
+		color: getColorForStatus("future"),
 		text: "enthusiastic",
 		...calculateShapeSize("enthusiastic"),
 	},
 	{
 		x: 500,
-		y: 200,
-		color: "green",
+		y: TIMELINE_HEIGHT * 0.2,
+		color: getColorForStatus("future"),
 		text: "friendly",
 		...calculateShapeSize("friendly"),
 	},
 	{
 		x: 700,
-		y: 250,
-		color: "blue",
+		y: TIMELINE_HEIGHT * -0.25,
+		color: getColorForStatus("future"),
 		text: "supportive",
 		...calculateShapeSize("supportive"),
 	},
@@ -224,10 +224,9 @@ export const updateWhiteboardShapes = async () => {
 						props: {
 							geo: "rectangle",
 							color: getColorForStatus(shape.status),
-							w: 100,
-							h: 50,
 							text: shape.text,
 						},
+						...calculateShapeSize(shape.text || ""),
 					},
 				]);
 			});
@@ -279,18 +278,19 @@ export const updateWhiteboardShapes = async () => {
 };
 
 // Helper to get color based on shape status
-const getColorForStatus = (status: string) => {
+// "black", "grey", "light-violet", "violet", "blue", "light-blue", "yellow", "orange", "green", "light-green", "light-red", "red", "white"
+export function getColorForStatus(status: string) {
 	switch (status) {
 		case "past":
-			return "light-blue";
+			return "grey";
 		case "staged_within_threshold":
 			return "yellow";
 		case "future":
-			return "light-violet";
+			return "blue";
 		default:
-			return "light-blue";
+			return "light-violet";
 	}
-};
+}
 
 // Effect to poll for changes to shapes.json
 effect(() => {
@@ -366,9 +366,10 @@ export const createTimelineBox = () => {
 			y: -TIMELINE_HEIGHT / 2,
 			props: {
 				geo: "rectangle",
-				color: "light-violet",
+				color: "grey",
 				dash: "dashed",
-				size: "l",
+				fill: "none",
+				size: "s", // Thinner border
 				w: TIMELINE_WIDTH,
 				h: TIMELINE_HEIGHT,
 			},
@@ -389,11 +390,12 @@ export const createTimelineCursor = () => {
 			id: TIMELINE_CURSOR_ID,
 			type: "geo",
 			x: timelinePosition.value,
-			y: 0,
+			y: -TIMELINE_HEIGHT / 2,
 			props: {
 				geo: "rectangle",
-				color: "light-red",
+				color: "light-blue",
 				dash: "solid",
+				fill: "semi",
 				size: "s",
 				w: 1,
 				h: TIMELINE_HEIGHT,
@@ -408,6 +410,7 @@ effect(() => {
 
 	let lastTime = performance.now();
 	const intervalId = window.setInterval(() => {
+		if (!editor.value) return;
 		const currentTime = performance.now();
 		const deltaTime = (currentTime - lastTime) / 1000;
 		lastTime = currentTime;
@@ -422,11 +425,39 @@ effect(() => {
 		}
 
 		// Update the timeline shape position
-		editor.value?.animateShape({
+		editor.value.animateShape({
 			id: TIMELINE_CURSOR_ID,
 			type: "geo",
 			x: timelinePosition.value,
-			y: -1000,
+			y: -TIMELINE_HEIGHT / 2,
+		});
+
+		// Update shape colors based on timeline position
+		const shapes = Array.from(editor.value.getCurrentPageShapes()).filter(
+			(shape) => !SYSTEM_SHAPE_IDS.includes(shape.id),
+		);
+
+		shapes.forEach((shape) => {
+			const shapeStart = shape.x;
+			const shapeEnd = shape.x + (shape.props as { w: number }).w;
+			const isCurrent =
+				timelinePosition.value >= shapeStart &&
+				timelinePosition.value <= shapeEnd;
+
+			const status = isCurrent
+				? "staged_within_threshold"
+				: timelinePosition.value > shapeEnd
+					? "past"
+					: "future";
+
+			editor.value?.updateShape({
+				id: shape.id,
+				type: "geo",
+				props: {
+					...shape.props,
+					color: getColorForStatus(status),
+				},
+			});
 		});
 	}, 1000 / 60); // 60fps
 

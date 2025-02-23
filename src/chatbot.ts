@@ -9,6 +9,7 @@ import {
 	TIMELINE_WIDTH,
 	editor,
 } from "@/store/whiteboard";
+import { getColorForStatus } from "@/store/whiteboard";
 
 // ANSI color codes
 const colors = {
@@ -326,20 +327,6 @@ Planned tones:
 ${formattedTonePlan}
 `.trim();
 }
-
-// Helper to get color based on shape status
-const getColorForStatus = (status: string) => {
-	switch (status) {
-		case "past":
-			return "light-blue";
-		case "staged_within_threshold":
-			return "yellow";
-		case "future":
-			return "light-violet";
-		default:
-			return "light-blue";
-	}
-};
 
 class ChatBot {
 	private history: ChatMessage[] = [];

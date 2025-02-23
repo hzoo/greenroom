@@ -48,7 +48,7 @@ export function transformShapes(shapes: TLShape[]): SimpleShape[] {
 	});
 }
 
-function computeStatus(shape: TLShape): SimpleShape["status"] {
+export function computeStatus(shape: TLShape): SimpleShape["status"] {
 	if (shape.x < timelinePosition.value) {
 		return "past";
 	}

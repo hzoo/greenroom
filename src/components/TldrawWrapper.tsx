@@ -2,6 +2,7 @@ import { Tldraw, DefaultToolbar, useTools, TldrawUiMenuItem } from "tldraw";
 import type { Editor, TLUiComponents } from "tldraw";
 import { useSignals } from "@preact/signals-react/runtime";
 import { setupEditorListeners } from "@/store/whiteboard";
+import { TIMELINE_WIDTH, TIMELINE_HEIGHT } from "@/store/whiteboard";
 
 import "tldraw/tldraw.css";
 
@@ -48,6 +49,12 @@ export function TldrawWrapper() {
 	const handleMount = (editorInstance: Editor) => {
 		// Initial setup
 		editorInstance.setCurrentTool("select");
+		editorInstance.setCamera({
+			x: 0,
+			y: TIMELINE_HEIGHT * 0.5,
+			z: 0.75,
+		});
+
 		editorInstance.user.updateUserPreferences({
 			animationSpeed: 1,
 			colorScheme: "system",
