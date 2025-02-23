@@ -94,7 +94,7 @@ Input format for each turn:
 2. Current time: How far we are into the 2-minute demo
 3. Conversation history: Previous exchanges between participants
 4. Tone history: How the emotional tone has progressed so far
-5. Planned tones: Upcoming tone shifts and their timing, with their staging status
+5. Planned tones: Upcoming tone shifts and their timing
 
 Response Guidelines:
 1. Make each tone extremely characteristic of its style
@@ -122,8 +122,7 @@ Output format:
       {
         "tone": "tone name",
         "timing": "when this tone should occur (in minutes from start)",
-        "status": "planned/active/completed",
-        "ready_for_transition": "boolean, only relevant for next tone in sequence"
+        "status": "planned/active/completed/staged"
       }
     ],
     "progress": "progress toward goal (early/middle/late)"
@@ -147,11 +146,6 @@ const TONE_SCHEMA = z.object({
 					status: z
 						.enum(["planned", "active", "completed", "staged"])
 						.describe("current status of this tone in the progression"),
-					ready_for_transition: z
-						.boolean()
-						.describe(
-							"whether we should transition to this tone in the next turn (only relevant for next planned tone)",
-						),
 				}),
 			)
 			.describe("full sequence of planned tones with their timing and status"),
@@ -348,7 +342,6 @@ export class ChatBot {
 				// Update tone progression if needed
 				if (
 					nextTone &&
-					(nextTone.ready_for_transition || parsed.tone.progress === "late") &&
 					this.currentToneIndex < this.initialToneProgression.length - 1
 				) {
 					this.currentToneIndex++;
@@ -396,47 +389,66 @@ export class ChatBot {
 				progression: response.tone.progression,
 			});
 
-			// Read current shapes to preserve system shapes
+			// Read current shapes to preserve system shapes and past tones
 			const currentShapes = await readShapesFile();
 			const systemShapes = currentShapes.filter((shape) =>
 				SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId),
 			);
+			const pastShapes = currentShapes.filter(
+				(shape) =>
+					!SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId) &&
+					shape.x <= timelinePosition.value,
+			);
 
 			// Calculate base positions for each tone in the progression
-			const tonePositions = response.tone.progression.map((tone, index) => {
-				// Calculate x position based on timing and total duration
-				const x = (tone.timing / this.durationMinutes) * timelineWidth.value;
+			const tonePositions = response.tone.progression
+				.map((tone, index) => {
+					// Calculate x position based on timing and total duration
+					const x = (tone.timing / this.durationMinutes) * timelineWidth.value;
 
-				// Create more dramatic vertical positioning
-				// Alternate between high and low positions for visual contrast
-				const baseY = index % 2 === 0 ? -150 : 150;
-				// Add slight random variation to prevent perfect alignment
-				const y = baseY + (Math.random() * 50 - 25);
+					// Only proceed if this tone is after the playhead
+					if (x <= timelinePosition.value) {
+						// Find matching past shape if it exists
+						const pastShape = pastShapes.find(
+							(shape) => shape.text === tone.tone,
+						);
+						if (pastShape) {
+							return pastShape;
+						}
+						return null;
+					}
 
-				const position = {
-					id: `shape:tone-${tone.tone}`,
-					x,
-					y,
-					text: tone.tone,
-					type: "tone" as const,
-					status: tone.status,
-					proportion_in_timeline: tone.timing / this.durationMinutes,
-					isModified: false,
-				};
+					// Create more dramatic vertical positioning
+					// Alternate between high and low positions for visual contrast
+					const baseY = index % 2 === 0 ? -150 : 150;
+					// Add slight random variation to prevent perfect alignment
+					const y = baseY + (Math.random() * 50 - 25);
 
-				console.log(`📍 Calculated position for tone ${tone.tone}:`, {
-					x: Math.round(x),
-					y: Math.round(y),
-					status: tone.status,
-					timing: `${Math.round(tone.timing * 100) / 100}min`,
-					proportion: `${Math.round(position.proportion_in_timeline * 100)}%`,
-				});
+					const position = {
+						id: `shape:tone-${tone.tone}`,
+						x,
+						y,
+						text: tone.tone,
+						type: "tone" as const,
+						status: tone.status,
+						proportion_in_timeline: tone.timing / this.durationMinutes,
+						isModified: false,
+					};
 
-				return position;
-			});
+					console.log(`📍 Calculated position for tone ${tone.tone}:`, {
+						x: Math.round(x),
+						y: Math.round(y),
+						status: tone.status,
+						timing: `${Math.round(tone.timing * 100) / 100}min`,
+						proportion: `${Math.round(position.proportion_in_timeline * 100)}%`,
+					});
 
-			// Combine system shapes with new tone positions
-			const allShapes = [...systemShapes, ...tonePositions];
+					return position;
+				})
+				.filter(Boolean); // Remove null entries
+
+			// Combine system shapes, past shapes, and new tone positions
+			const allShapes = [...systemShapes, ...pastShapes, ...tonePositions];
 
 			// Save the shapes to the shapes.json file
 			console.log("💾 Saving shapes to file...");
@@ -473,55 +485,60 @@ export class ChatBot {
 
 				// Update or create shapes
 				allShapes.forEach((shape) => {
-					if (!SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId)) {
-						const existingShape = existingShapesByTone.get(shape.text);
-						console.log("🔍 Existing shape:", existingShape);
+					if (!shape || SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId)) {
+						return;
+					}
 
-						if (existingShape) {
-							// Update existing shape
-							editor.value?.animateShape(
-								{
-									...existingShape,
-									x: shape.x,
-									y: shape.y,
-									props: {
-										...existingShape.props,
-										color: getColorForStatus(shape.status),
-									},
+					const existingShape = existingShapesByTone.get(shape.text);
+					console.log("🔍 Existing shape:", existingShape);
+
+					// Only update shapes after the playhead
+					if (existingShape && shape.x > timelinePosition.value) {
+						// Update existing shape
+						editor.value?.animateShape(
+							{
+								...existingShape,
+								x: shape.x,
+								y: shape.y,
+								props: {
+									...existingShape.props,
+									color: getColorForStatus(shape.status),
 								},
-								{
-									animation: {
-										duration: 100,
-										easing: (t) =>
-											t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2,
-									},
+							},
+							{
+								animation: {
+									duration: 100,
+									easing: (t) =>
+										t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2,
 								},
-							);
-							// Remove from map to track which shapes were handled
-							existingShapesByTone.delete(shape.text);
-						} else {
-							// Create new shape if it doesn't exist
-							editor.value?.createShapes([
-								{
-									id: shape.id as TLShapeId,
-									type: "geo",
-									x: shape.x,
-									y: shape.y,
-									props: {
-										geo: "rectangle",
-										color: getColorForStatus(shape.status),
-										w: 100,
-										h: 50,
-										text: shape.text,
-									},
+							},
+						);
+						// Remove from map to track which shapes were handled
+						existingShapesByTone.delete(shape.text);
+					} else if (!existingShape && shape.x > timelinePosition.value) {
+						// Create new shape if it doesn't exist and is after playhead
+						editor.value?.createShapes([
+							{
+								id: shape.id as TLShapeId,
+								type: "geo",
+								x: shape.x,
+								y: shape.y,
+								props: {
+									geo: "rectangle",
+									color: getColorForStatus(shape.status),
+									w: 100,
+									h: 50,
+									text: shape.text,
 								},
-							]);
-						}
+							},
+						]);
 					}
 				});
 
-				// Delete any remaining shapes that weren't updated
-				const shapesToDelete = Array.from(existingShapesByTone.values());
+				// Only delete shapes that are after the playhead
+				const shapesToDelete = Array.from(existingShapesByTone.values())
+					.filter((shape): shape is NonNullable<typeof shape> => shape !== null)
+					.filter((shape) => shape.x > timelinePosition.value);
 				if (shapesToDelete.length > 0) {
 					editor.value.deleteShapes(shapesToDelete.map((shape) => shape.id));
 				}
@@ -624,19 +641,28 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 			const segmentDuration =
 				this.durationMinutes / (this.initialToneProgression.length || 1);
 
+			// Filter to only include tones that are after the playhead position
+			const futureToneShapes = toneShapes.filter(
+				(shape) => shape.x > timelinePosition.value,
+			);
+
 			// If we have tone shapes, use them for progression, otherwise use initial progression
 			const tonePlan =
-				toneShapes.length > 0
-					? toneShapes.map((shape) => ({
+				futureToneShapes.length > 0
+					? futureToneShapes.map((shape) => ({
 							tone: shape.text || "unknown",
 							// Scale x position to fit within total duration
 							timing: (shape.x / timelineWidth.value) * this.durationMinutes,
 						}))
-					: this.initialToneProgression.map((tone, index) => ({
-							tone,
-							// Evenly space tones across the total duration
-							timing: index * segmentDuration,
-						}));
+					: this.initialToneProgression
+							.filter((_, index) => index * segmentDuration > elapsed)
+							.map((tone, index) => ({
+								tone,
+								// Evenly space tones across the remaining duration
+								timing:
+									(index + Math.floor(elapsed / segmentDuration)) *
+									segmentDuration,
+							}));
 
 			// Find the current tone index based on elapsed time
 			this.currentToneIndex = tonePlan.findIndex((plan, index) => {
@@ -658,7 +684,7 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 					duration: this.durationMinutes,
 					elapsed,
 				},
-				nextTonePlan: tonePlan.slice(this.currentToneIndex),
+				nextTonePlan: tonePlan.map(({ tone, timing }) => ({ tone, timing })),
 			};
 		} catch (error) {
 			console.error("Error updating context:", error);
@@ -692,15 +718,13 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 			// Calculate timing to create clear segments
 			const timing = index * segmentDuration;
 
-			// Determine status and transition readiness
+			// Determine status
 			const status: ToneStatus = index === 0 ? "active" : "planned";
-			const ready_for_transition = index === 1; // Only the next tone is ready
 
 			return {
 				tone,
 				timing,
 				status,
-				ready_for_transition,
 			};
 		});
 
