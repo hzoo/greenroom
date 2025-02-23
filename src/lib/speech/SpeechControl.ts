@@ -7,8 +7,7 @@ import type {
 	SpeechRecognitionEvent,
 	SpeechRecognitionErrorEvent,
 } from "./types";
-import { AudioQueueManager, audioQueue } from "./AudioQueueManager";
-import { effect } from "@preact/signals-react";
+import { AudioQueueManager, audioChunks } from "./AudioQueueManager";
 
 // Default configuration
 const DEFAULT_CONFIG: Required<SpeechControlConfig> = {
@@ -270,8 +269,11 @@ export class SpeechControl {
 	}
 
 	async speak(text: string) {
-		if (!this.audioContext || !this.config.elevenlabsApiKey) {
-			throw new Error("Audio context or ElevenLabs API key not initialized");
+		if (!this.audioContext) {
+			throw new Error("Audio context not initialized");
+		}
+		if (!this.config.elevenlabsApiKey) {
+			throw new Error("ElevenLabs API key not configured");
 		}
 
 		// Check if context is closed or suspended
@@ -459,7 +461,7 @@ export class SpeechControl {
 					this.audioQueue &&
 					this.audioContext?.state === "running"
 				) {
-					const currentQueueLength = audioQueue.value.chunks.length;
+					const currentQueueLength = audioChunks.value.length;
 					if (currentQueueLength > 0) {
 						debugLog(
 							"Attaching completion handler to final queued chunk",
@@ -467,17 +469,14 @@ export class SpeechControl {
 							"synthesis",
 						);
 						// Get the raw audio data from the last chunk
-						const lastChunk = audioQueue.value.chunks[currentQueueLength - 1];
+						const lastChunk = audioChunks.value[currentQueueLength - 1];
 						// Create an array buffer from the audio data
 						const audioData = new Float32Array(lastChunk.buffer.length);
 						lastChunk.buffer.copyFromChannel(audioData, 0);
 						const arrayBuffer = audioData.buffer;
 
 						// Remove the last chunk and re-add it with the completion handler
-						audioQueue.value = {
-							...audioQueue.value,
-							chunks: audioQueue.value.chunks.slice(0, -1),
-						};
+						audioChunks.value = audioChunks.value.slice(0, -1);
 						await this.audioQueue
 							.addToQueue(arrayBuffer, lastChunk.alignment, completionHandler)
 							.catch(errorRecoveryHandler);

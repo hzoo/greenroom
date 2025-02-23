@@ -2,7 +2,6 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, memo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { speechState } from "@/lib/speech/SpeechControl";
-import { audioQueue } from "@/lib/speech/AudioQueueManager";
 import { createPersistedSignal } from "@/store/signals";
 import { signal } from "@preact/signals-react";
 

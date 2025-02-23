@@ -1,10 +1,8 @@
 import { signal } from "@preact/signals-react";
-import type { AudioChunk, AudioQueueState } from "./types";
+import type { AudioChunk } from "./types";
 
-export const audioQueue = signal<AudioQueueState>({
-	chunks: [],
-	isPlaying: false,
-});
+// Base signals
+export const audioChunks = signal<AudioChunk[]>([]);
 
 // Constants for playback optimization
 const BUFFER_THRESHOLD = 2; // Start playback when we have this many chunks
@@ -15,8 +13,6 @@ const MIN_GAIN = 0.0001; // Minimum gain value for exponential ramps
 
 export class AudioQueueManager {
 	private ctx: AudioContext;
-	private currentSource: AudioBufferSourceNode | null = null;
-	private nextStartTime = 0;
 	private onPlaybackComplete?: () => void;
 	private gainNode: GainNode;
 	private pendingChunks: AudioChunk[] = [];
@@ -61,11 +57,7 @@ export class AudioQueueManager {
 				this.pendingChunks.splice(insertIndex, 0, chunk);
 			}
 
-			// Update signal state
-			audioQueue.value = {
-				...audioQueue.value,
-				chunks: [...audioQueue.value.chunks, chunk],
-			};
+			audioChunks.value = audioChunks.value.concat(chunk);
 
 			// Process queue if we have enough chunks or this is a completion chunk
 			if (this.pendingChunks.length >= BUFFER_THRESHOLD || onComplete) {
@@ -156,30 +148,21 @@ export class AudioQueueManager {
 					}
 
 					// Remove from queue
-					audioQueue.value = {
-						...audioQueue.value,
-						chunks: audioQueue.value.chunks.slice(1),
-					};
+					audioChunks.value = audioChunks.value.slice(1);
 
 					// Handle completion
 					if (
-						audioQueue.value.chunks.length === 0 &&
+						audioChunks.value.length === 0 &&
 						this.onPlaybackComplete &&
 						this.pendingChunks.length === 0
 					) {
 						this.onPlaybackComplete();
 						this.onPlaybackComplete = undefined;
-						audioQueue.value = { ...audioQueue.value, isPlaying: false };
 					}
 				};
 
 				// Remove from pending chunks
 				this.pendingChunks.shift();
-
-				// Update state
-				if (!audioQueue.value.isPlaying) {
-					audioQueue.value = { ...audioQueue.value, isPlaying: true };
-				}
 
 				// Use precise scheduling interval
 				await new Promise((resolve) =>
@@ -209,10 +192,10 @@ export class AudioQueueManager {
 		this.chunkSequence = 0;
 		this.lastProcessedSequence = -1;
 
-		// Clear all queues
+		// Clear all queues and batch signal updates
 		this.pendingChunks = [];
-		audioQueue.value = { chunks: [], isPlaying: false };
-		this.nextStartTime = 0;
+		audioChunks.value = [];
+
 		this.lastChunkEndTime = this.ctx.currentTime;
 		this.onPlaybackComplete = undefined;
 
