@@ -66,6 +66,7 @@ declare global {
 // Audio Queue Types
 export interface AudioChunk {
 	buffer: AudioBuffer;
+	sequence: number;
 	alignment?: {
 		charStartTimesMs: number[];
 		charDurationsMs: number[];

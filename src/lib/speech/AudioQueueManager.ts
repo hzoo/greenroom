@@ -9,7 +9,9 @@ export const audioQueue = signal<AudioQueueState>({
 // Constants for playback optimization
 const BUFFER_THRESHOLD = 2; // Start playback when we have this many chunks
 const BUFFER_AHEAD_TIME = 0.1; // Schedule chunks 100ms ahead
-const CROSSFADE_DURATION = 0.005; // 5ms crossfade to smooth transitions
+const CROSSFADE_DURATION = 0.015; // 15ms for smooth transitions
+const SCHEDULING_INTERVAL = 0.01; // 10ms scheduling interval
+const MIN_GAIN = 0.0001; // Minimum gain value for exponential ramps
 
 export class AudioQueueManager {
 	private ctx: AudioContext;
@@ -19,11 +21,16 @@ export class AudioQueueManager {
 	private gainNode: GainNode;
 	private pendingChunks: AudioChunk[] = [];
 	private isProcessingQueue = false;
+	private lastChunkEndTime = 0;
+	private activeNodes: Set<AudioNode> = new Set();
+	private chunkSequence = 0; // Track chunk sequence
+	private lastProcessedSequence = -1; // Track last processed sequence
 
 	constructor(ctx: AudioContext) {
 		this.ctx = ctx;
 		this.gainNode = ctx.createGain();
 		this.gainNode.connect(ctx.destination);
+		this.lastChunkEndTime = this.ctx.currentTime;
 	}
 
 	async addToQueue(
@@ -37,10 +44,22 @@ export class AudioQueueManager {
 
 		try {
 			const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
-			const chunk = { buffer: audioBuffer, alignment };
+			const sequence = this.chunkSequence++;
+			const chunk = {
+				buffer: audioBuffer,
+				alignment,
+				sequence, // Add sequence number to chunk
+			};
 
-			// Add to pending chunks
-			this.pendingChunks.push(chunk);
+			// Add to pending chunks in sequence order
+			const insertIndex = this.pendingChunks.findIndex(
+				(c) => c.sequence > sequence,
+			);
+			if (insertIndex === -1) {
+				this.pendingChunks.push(chunk);
+			} else {
+				this.pendingChunks.splice(insertIndex, 0, chunk);
+			}
 
 			// Update signal state
 			audioQueue.value = {
@@ -48,9 +67,9 @@ export class AudioQueueManager {
 				chunks: [...audioQueue.value.chunks, chunk],
 			};
 
-			// If we have enough chunks buffered or this is a completion chunk, process queue
+			// Process queue if we have enough chunks or this is a completion chunk
 			if (this.pendingChunks.length >= BUFFER_THRESHOLD || onComplete) {
-				this.processQueue();
+				await this.processQueue();
 			}
 		} catch (error) {
 			console.error("Error decoding audio for queue:", error);
@@ -65,10 +84,30 @@ export class AudioQueueManager {
 			while (this.pendingChunks.length > 0) {
 				const chunk = this.pendingChunks[0];
 
-				// Calculate precise start time
+				// Ensure chunks are processed in sequence
+				if (chunk.sequence !== this.lastProcessedSequence + 1) {
+					console.warn(
+						`Out of sequence chunk detected. Expected ${this.lastProcessedSequence + 1}, got ${chunk.sequence}`,
+					);
+					// Wait for the correct chunk
+					await new Promise((resolve) =>
+						setTimeout(resolve, SCHEDULING_INTERVAL * 1000),
+					);
+					continue;
+				}
+
+				// Ensure we have a valid buffer
+				if (!chunk.buffer || chunk.buffer.length === 0) {
+					console.warn("Skipping invalid audio chunk");
+					this.pendingChunks.shift();
+					this.lastProcessedSequence = chunk.sequence;
+					continue;
+				}
+
+				// Calculate start time with extra padding for crossfade
 				const startTime = Math.max(
 					this.ctx.currentTime + BUFFER_AHEAD_TIME,
-					this.nextStartTime,
+					this.lastChunkEndTime - CROSSFADE_DURATION,
 				);
 
 				// Create and configure source
@@ -79,32 +118,42 @@ export class AudioQueueManager {
 				const chunkGain = this.ctx.createGain();
 				chunkGain.connect(this.gainNode);
 
-				// Apply slight fade in/out for smooth transitions
-				chunkGain.gain.setValueAtTime(0, startTime);
-				chunkGain.gain.linearRampToValueAtTime(
-					1,
-					startTime + CROSSFADE_DURATION,
-				);
-				chunkGain.gain.setValueAtTime(
-					1,
-					startTime + chunk.buffer.duration - CROSSFADE_DURATION,
-				);
-				chunkGain.gain.linearRampToValueAtTime(
-					0,
-					startTime + chunk.buffer.duration,
-				);
+				// Track these nodes
+				this.activeNodes.add(source);
+				this.activeNodes.add(chunkGain);
+
+				// Calculate precise timing points
+				const fadeInEnd = startTime + CROSSFADE_DURATION;
+				const fadeOutStart =
+					startTime + chunk.buffer.duration - CROSSFADE_DURATION;
+				const chunkEndTime = startTime + chunk.buffer.duration;
+
+				// More gradual fade curves
+				chunkGain.gain.setValueAtTime(MIN_GAIN, startTime);
+				chunkGain.gain.exponentialRampToValueAtTime(1, fadeInEnd);
+				chunkGain.gain.setValueAtTime(1, fadeOutStart);
+				chunkGain.gain.exponentialRampToValueAtTime(MIN_GAIN, chunkEndTime);
 
 				source.connect(chunkGain);
-				source.start(startTime);
 
-				// Update timing
-				this.nextStartTime =
-					startTime + chunk.buffer.duration - CROSSFADE_DURATION;
+				// Schedule the start and include a small offset to ensure full playback
+				source.start(startTime, 0, chunk.buffer.duration + CROSSFADE_DURATION);
+
+				// Update timing tracking
+				this.lastChunkEndTime = chunkEndTime;
+				this.lastProcessedSequence = chunk.sequence;
 
 				// Set up completion handling
 				source.onended = () => {
-					source.disconnect();
-					chunkGain.disconnect();
+					// Clean up nodes
+					if (this.activeNodes.has(source)) {
+						source.disconnect();
+						this.activeNodes.delete(source);
+					}
+					if (this.activeNodes.has(chunkGain)) {
+						chunkGain.disconnect();
+						this.activeNodes.delete(chunkGain);
+					}
 
 					// Remove from queue
 					audioQueue.value = {
@@ -112,7 +161,7 @@ export class AudioQueueManager {
 						chunks: audioQueue.value.chunks.slice(1),
 					};
 
-					// If this was the last chunk and we have a completion callback
+					// Handle completion
 					if (
 						audioQueue.value.chunks.length === 0 &&
 						this.onPlaybackComplete &&
@@ -132,8 +181,10 @@ export class AudioQueueManager {
 					audioQueue.value = { ...audioQueue.value, isPlaying: true };
 				}
 
-				// Small delay to allow for smooth scheduling
-				await new Promise((resolve) => setTimeout(resolve, 10));
+				// Use precise scheduling interval
+				await new Promise((resolve) =>
+					setTimeout(resolve, SCHEDULING_INTERVAL * 1000),
+				);
 			}
 		} finally {
 			this.isProcessingQueue = false;
@@ -141,17 +192,28 @@ export class AudioQueueManager {
 	}
 
 	clear() {
-		// Stop all current playback
-		if (this.currentSource) {
-			this.currentSource.stop();
-			this.currentSource.disconnect();
-			this.currentSource = null;
+		// Stop and disconnect all active nodes
+		for (const node of this.activeNodes) {
+			try {
+				if (node instanceof AudioBufferSourceNode) {
+					node.stop();
+				}
+				node.disconnect();
+			} catch (error) {
+				console.warn("Error cleaning up audio node:", error);
+			}
 		}
+		this.activeNodes.clear();
+
+		// Reset sequence tracking
+		this.chunkSequence = 0;
+		this.lastProcessedSequence = -1;
 
 		// Clear all queues
 		this.pendingChunks = [];
 		audioQueue.value = { chunks: [], isPlaying: false };
 		this.nextStartTime = 0;
+		this.lastChunkEndTime = this.ctx.currentTime;
 		this.onPlaybackComplete = undefined;
 
 		// Reset gain
