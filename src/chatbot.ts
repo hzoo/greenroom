@@ -819,7 +819,10 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 		};
 
 		// Add the initial response to history
-		await this.addMessage("assistant", JSON.stringify(initialResponse));
+		await this.addMessage(
+			"assistant",
+			JSON.stringify(initialResponse.response.content),
+		);
 	}
 }
 

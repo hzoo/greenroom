@@ -22,7 +22,7 @@ export type SimpleShape = {
 	isModified?: boolean; // Whether this shape has been modified by the driver
 };
 
-const STAGE_THRESHOLD = 100; // (pixels)
+const STAGE_THRESHOLD = 250; // (pixels)
 
 export function transformShapes(shapes: TLShape[]): SimpleShape[] {
 	return shapes.map((shape) => {
