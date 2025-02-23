@@ -4,9 +4,9 @@ import { z } from "zod";
 import type { SimpleShape } from "@/lib/utils";
 import type { TLShapeId } from "tldraw";
 import {
-	SYSTEM_SHAPE_IDS,
+	timelineWidth,
 	timelinePosition,
-	TIMELINE_WIDTH,
+	SYSTEM_SHAPE_IDS,
 	editor,
 } from "@/store/whiteboard";
 import { getColorForStatus } from "@/store/whiteboard";
@@ -272,13 +272,13 @@ async function formatContext(context: Context): Promise<string> {
 		.map((msg) => `${msg.role}: ${msg.content}`)
 		.join("\n");
 
+	const startTime = context.toneHistory[0].timestamp;
 	const formattedToneHistory = context.toneHistory
 		.map((t) => {
-			// Instead of using wall clock time, we'll use the proportion through the conversation
-			const proportionElapsed =
-				t.timestamp / (60 * 1000 * context.task.duration);
-			const minutesElapsed = proportionElapsed * context.task.duration;
-			return `[${minutesElapsed.toFixed(1)}min] ${t.tone}`;
+			// Calculate minutes elapsed since conversation start
+			const elapsedMs = t.timestamp - startTime;
+			const elapsedMinutes = elapsedMs / (60 * 1000);
+			return `[${elapsedMinutes.toFixed(1)}min] ${t.tone}`;
 		})
 		.join("\n");
 
@@ -350,59 +350,57 @@ class ChatBot {
 	private lastVoiceResponse: z.infer<typeof TONE_SCHEMA> | null = null;
 	private voiceTranscript: { message: string; source: "user" | "ai" }[] = [];
 
-	constructor(
-		systemPrompt = SYSTEM_PROMPT,
-		private toneDictionary = [
-			"professional",
-			"casual",
-			"friendly",
-			"formal",
-			"empathetic",
-			"supportive",
-			"instructive",
-			"curious",
-			"enthusiastic",
-			"patient",
-			"collaborative",
-			"analytical",
-			"diplomatic",
-			"encouraging",
-			"reassuring",
-			"understanding",
-			"knowledgeable",
-			"adaptable",
-			"clear",
-			"respectful",
-			"engaging",
-			"thoughtful",
-			"methodical",
-			"pragmatic",
-			"approachable",
-			"confident",
-			"detailed",
-			"efficient",
-			"focused",
-			"gentle",
-			"helpful",
-			"innovative",
-			"logical",
-			"motivating",
-			"nurturing",
-			"organized",
-			"proactive",
-			"reliable",
-			"systematic",
-			"thorough",
-		],
-		private task = "Teach the user, a non-technical person, how to use Obsidian",
-		private initialToneProgression = [
-			"casual",
-			"enthusiastic",
-			"friendly",
-			"supportive",
-		],
-		durationMinutes = 15,
-	) {
+	private toneDictionary = [
+		"professional",
+		"casual",
+		"friendly",
+		"formal",
+		"empathetic",
+		"supportive",
+		"instructive",
+		"curious",
+		"enthusiastic",
+		"patient",
+		"collaborative",
+		"analytical",
+		"diplomatic",
+		"encouraging",
+		"reassuring",
+		"understanding",
+		"knowledgeable",
+		"adaptable",
+		"clear",
+		"respectful",
+		"engaging",
+		"thoughtful",
+		"methodical",
+		"pragmatic",
+		"approachable",
+		"confident",
+		"detailed",
+		"efficient",
+		"focused",
+		"gentle",
+		"helpful",
+		"innovative",
+		"logical",
+		"motivating",
+		"nurturing",
+		"organized",
+		"proactive",
+		"reliable",
+		"systematic",
+		"thorough",
+	];
+	private task = "Teach the user, a non-technical person, how to use Obsidian";
+	private initialToneProgression = [
+		"casual",
+		"enthusiastic",
+		"friendly",
+		"supportive",
+	];
+
+	constructor({ systemPrompt = SYSTEM_PROMPT, durationMinutes = 15 }) {
 		if (durationMinutes < 1 || durationMinutes > 30) {
 			throw new Error("Duration must be between 1 and 30 minutes");
 		}
@@ -532,7 +530,7 @@ class ChatBot {
 			// Calculate base positions for each tone in the progression
 			const tonePositions = response.tone.progression.map((tone, index) => {
 				// Calculate x position based on timing and total duration
-				const x = (tone.timing / this.durationMinutes) * TIMELINE_WIDTH;
+				const x = (tone.timing / this.durationMinutes) * timelineWidth.value;
 				// Add some vertical scatter
 				const y = Math.random() * 400 - 200; // Random y between -200 and 200
 
@@ -747,7 +745,7 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 			// Calculate elapsed time based on timeline position
 			// Convert timeline position to minutes using the signal
 			const elapsed =
-				(timelinePosition.value / TIMELINE_WIDTH) * this.durationMinutes;
+				(timelinePosition.value / timelineWidth.value) * this.durationMinutes;
 
 			// Calculate segment duration based on total duration and number of tones
 			const segmentDuration =
@@ -759,7 +757,7 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 					? toneShapes.map((shape) => ({
 							tone: shape.text || "unknown",
 							// Scale x position to fit within total duration
-							timing: (shape.x / TIMELINE_WIDTH) * this.durationMinutes,
+							timing: (shape.x / timelineWidth.value) * this.durationMinutes,
 						}))
 					: this.initialToneProgression.map((tone, index) => ({
 							tone,

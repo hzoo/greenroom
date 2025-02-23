@@ -8,10 +8,11 @@ import {
 	TIMELINE_CURSOR_ID,
 	isDebugOpen,
 	progress,
-	TIMELINE_WIDTH,
+	timelineWidth,
 	markerPositions,
 	debugPanelHeight,
 	DEFAULT_DEBUG_HEIGHT,
+	timelineDurationMinutes,
 } from "@/store/whiteboard";
 import {
 	volume,
@@ -115,7 +116,9 @@ const PositionDisplay = memo(function PositionDisplay() {
 					{formatCoord(timelinePosition.value)}
 				</span>
 				<span className="text-gray-500">/</span>
-				<span className="text-gray-400">{formatCoord(TIMELINE_WIDTH)}</span>
+				<span className="text-gray-400">
+					{formatCoord(timelineWidth.value)}
+				</span>
 			</div>
 		</div>
 	);
@@ -133,7 +136,7 @@ const TimelineMarkers = memo(function TimelineMarkers() {
 					<div
 						key={x}
 						className="absolute h-full w-0.5 bg-gray-500/50"
-						style={{ left: `${(x / TIMELINE_WIDTH) * 100}%` }}
+						style={{ left: `${(x / timelineWidth.value) * 100}%` }}
 					/>
 				))}
 			</div>
@@ -151,7 +154,7 @@ const TimelineMarkers = memo(function TimelineMarkers() {
 			<div
 				className="absolute top-0 bottom-0 w-0.5 bg-red-500/50"
 				style={{
-					left: `${(timelinePosition.value / TIMELINE_WIDTH) * 100}%`,
+					left: `${(timelinePosition.value / timelineWidth.value) * 100}%`,
 				}}
 			/>
 		</div>
@@ -360,7 +363,9 @@ export function ActiveDocuments() {
 	// Initialize chatbot
 	useEffect(() => {
 		const initializeChatbot = async () => {
-			const bot = new ChatBot();
+			const bot = new ChatBot({
+				durationMinutes: timelineDurationMinutes.value,
+			});
 			await bot.initialize();
 			chatbot.value = bot;
 		};

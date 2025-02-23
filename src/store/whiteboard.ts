@@ -6,7 +6,16 @@ import { createPersistedSignal } from "./signals";
 
 // Constants
 const SPEED = 10; // pixels per second
-export const TIMELINE_WIDTH = 2000;
+const DEFAULT_DURATION_MINUTES = 5;
+const MINUTES_TO_SECONDS = 60;
+
+// Calculate timeline width based on duration and speed
+// Width = speed * total_seconds
+// Example: 15min = 900sec * 10px/sec = 9000px
+export const timelineDurationMinutes = signal(DEFAULT_DURATION_MINUTES);
+export const timelineWidth = computed(
+	() => timelineDurationMinutes.value * MINUTES_TO_SECONDS * SPEED,
+);
 export const TIMELINE_HEIGHT = 1200;
 export const TIMELINE_CURSOR_ID = "shape:timeline-cursor" as TLShapeId;
 export const TIMELINE_BOX_ID = "shape:timeline-box" as TLShapeId;
@@ -61,7 +70,9 @@ effect(() => {
 });
 
 // computed
-export const progress = computed(() => timelinePosition.value / TIMELINE_WIDTH);
+export const progress = computed(
+	() => timelinePosition.value / timelineWidth.value,
+);
 export const markerPositions = computed(() => {
 	const positions = new Set(
 		documents.value
@@ -370,7 +381,7 @@ export const createTimelineBox = () => {
 				dash: "dashed",
 				fill: "none",
 				size: "s", // Thinner border
-				w: TIMELINE_WIDTH,
+				w: timelineWidth.value,
 				h: TIMELINE_HEIGHT,
 			},
 		},
@@ -419,7 +430,7 @@ effect(() => {
 		elapsedTime.value += deltaTime;
 
 		// Reset if we reach the end
-		if (timelinePosition.value >= TIMELINE_WIDTH) {
+		if (timelinePosition.value >= timelineWidth.value) {
 			timelinePosition.value = 0;
 			elapsedTime.value = 0;
 		}
@@ -459,7 +470,7 @@ effect(() => {
 				},
 			});
 		});
-	}, 1000 / 60); // 60fps
+	}, 1000 / 30); // 30fps
 
 	return () => window.clearInterval(intervalId);
 });

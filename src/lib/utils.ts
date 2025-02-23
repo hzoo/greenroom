@@ -2,9 +2,9 @@ import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import type { TLShape, TLTextShape } from "tldraw";
 import {
-	TIMELINE_WIDTH,
 	timelinePosition,
 	modifiedShapes,
+	timelineWidth,
 } from "../store/whiteboard";
 
 export function cn(...inputs: ClassValue[]) {
@@ -43,7 +43,7 @@ export function transformShapes(shapes: TLShape[]): SimpleShape[] {
 			type: "tone", // Default to tone for now
 			status,
 			isModified,
-			proportion_in_timeline: shape.x / TIMELINE_WIDTH,
+			proportion_in_timeline: shape.x / timelineWidth.value,
 		};
 	});
 }

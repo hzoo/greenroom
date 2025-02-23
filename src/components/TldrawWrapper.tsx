@@ -2,7 +2,7 @@ import { Tldraw, DefaultToolbar, useTools, TldrawUiMenuItem } from "tldraw";
 import type { Editor, TLUiComponents } from "tldraw";
 import { useSignals } from "@preact/signals-react/runtime";
 import { setupEditorListeners } from "@/store/whiteboard";
-import { TIMELINE_WIDTH, TIMELINE_HEIGHT } from "@/store/whiteboard";
+import { TIMELINE_HEIGHT } from "@/store/whiteboard";
 
 import "tldraw/tldraw.css";
 

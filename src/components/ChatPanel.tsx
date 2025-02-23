@@ -1,6 +1,10 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, memo } from "react";
-import { chatHistory, isChatLoading } from "@/store/whiteboard";
+import {
+	chatHistory,
+	debugPanelHeight,
+	isChatLoading,
+} from "@/store/whiteboard";
 import { cn } from "@/lib/utils";
 import { AgentCircle } from "./VoiceChat";
 import {
@@ -214,6 +218,10 @@ export function ChatPanel() {
 				<div
 					ref={chatContainerRef}
 					className="flex-1 overflow-auto p-3 space-y-4 font-mono"
+					style={{
+						maxHeight: `${debugPanelHeight.value - 150}px`,
+						overflowY: "auto",
+					}}
 				>
 					{chatHistory.value.map((msg, i) => (
 						<div
