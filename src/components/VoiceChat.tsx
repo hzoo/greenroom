@@ -1,10 +1,12 @@
 import { signal, effect } from "@preact/signals-react";
 import type { Role } from "@11labs/client";
-import { useEffect, memo, useRef } from "react";
+import { useEffect, memo, useRef, useMemo } from "react";
 import { useSignalEffect, useSignals } from "@preact/signals-react/runtime";
 import { cn } from "@/lib/utils";
 import { createPersistedSignal } from "@/store/signals";
 import ChatBot from "@/chatbot";
+import { SpeechControl, speechState } from "@/lib/speech/SpeechControl";
+import { VoiceChatUI } from "./VoiceChatUI";
 
 // Add at the top of the file after imports
 declare global {
@@ -1100,220 +1102,71 @@ const SILENCE_DURATION = 1500; // 1.5 seconds of silence before considering spee
 export function VoiceChat() {
 	useSignals();
 
-	// Add silence detection state
-	const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-	const currentTranscriptRef = useRef("");
-
-	// Add silence detection effect
-	useSignalEffect(() => {
-		if (!isUserSpeaking.value || !conversation.value) return;
-
-		const checkSilence = () => {
-			const volume = conversation.value?.getInputVolume() || 0;
-			debugLog(
-				"Checking silence",
-				{ volume, threshold: SILENCE_THRESHOLD },
-				"speech",
-			);
-
-			if (volume < SILENCE_THRESHOLD) {
-				if (!silenceTimeoutRef.current) {
-					silenceTimeoutRef.current = setTimeout(() => {
-						debugLog(
-							"Silence detected, ending speech",
-							{
-								duration: SILENCE_DURATION,
-								finalTranscript: currentTranscriptRef.current,
-							},
-							"speech",
+	// Initialize SpeechControl with proper event handlers
+	const speechControl = useMemo(() => {
+		return new SpeechControl(
+			{
+				elevenlabsApiKey: import.meta.env.VITE_ELEVENLABS_API_KEY,
+			},
+			{
+				onTranscriptUpdate: async (transcript, isFinal) => {
+					console.log("Transcript update:", { transcript, isFinal }); // Debug log
+					if (isFinal && chatbot.value) {
+						console.log("Processing final transcript with chatbot"); // Debug log
+						const response = await chatbot.value.handleVoiceTranscript(
+							transcript,
+							"user",
 						);
-						isUserSpeaking.value = false;
-					}, SILENCE_DURATION);
-				}
-			} else {
-				if (silenceTimeoutRef.current) {
-					clearTimeout(silenceTimeoutRef.current);
-					silenceTimeoutRef.current = null;
-				}
-			}
-		};
-
-		const intervalId = setInterval(checkSilence, 100);
-		return () => {
-			clearInterval(intervalId);
-			if (silenceTimeoutRef.current) {
-				clearTimeout(silenceTimeoutRef.current);
-				silenceTimeoutRef.current = null;
-			}
-		};
-	});
-
-	useEffect(() => {
-		// Get agent ID from URL parameters
-		const params = new URLSearchParams(window.location.search);
-		const id = params.get("agentId");
-		const name = params.get("name");
-		if (name) {
-			agentName.value = decodeURIComponent(name);
-		}
-		if (id) {
-			agentId.value = id;
-		}
-
-		return () => {
-			// Clean up silence detection
-			if (silenceTimeoutRef.current) {
-				clearTimeout(silenceTimeoutRef.current);
-				silenceTimeoutRef.current = null;
-			}
-		};
+						if (response) {
+							console.log("Got chatbot response:", response); // Debug log
+							await speechControl.speak(response.response.content);
+						}
+					}
+				},
+				onError: (error) => {
+					console.error("Speech control error:", error);
+				},
+			},
+		);
 	}, []);
 
-	// Update the recognition.onresult handler to use currentTranscriptRef
 	useEffect(() => {
-		if (recognition.value) {
-			recognition.value.onresult = (event) => {
-				let interimTranscript = "";
-				let finalTranscript = "";
+		// Initialize chatbot
+		const initializeChatbot = async () => {
+			console.log("Initializing chatbot..."); // Debug log
+			const bot = new ChatBot();
+			await bot.initialize();
+			chatbot.value = bot;
+			console.log("Chatbot initialized"); // Debug log
+		};
 
-				for (let i = event.resultIndex; i < event.results.length; i++) {
-					const transcript = event.results[i][0].transcript;
-					if (event.results[i].isFinal) {
-						finalTranscript += transcript;
-						debugLog("Final transcript", { transcript }, "speech");
-					} else {
-						interimTranscript += transcript;
-						debugLog("Interim transcript", { transcript }, "speech");
-					}
-				}
+		initializeChatbot();
 
-				if (finalTranscript) {
-					currentTranscriptRef.current = finalTranscript;
-					isUserSpeaking.value = false;
+		return () => {
+			// Cleanup
+			speechControl.stop();
+			chatbot.value?.cleanup();
+		};
+	}, [speechControl]);
 
-					// Process final transcript
-					if (chatbot.value) {
-						debugLog(
-							"Processing final transcript for response",
-							{
-								transcript: finalTranscript,
-								currentTone: chatbot.value.getCurrentToneState()?.tone,
-							},
-							"speech",
-						);
-
-						chatbot.value
-							.handleVoiceTranscript(finalTranscript, "user")
-							.then((response) => {
-								if (response) {
-									debugLog(
-										"Generated response",
-										{
-											text: response.response.content,
-											tone: response.tone.current,
-											intent: response.response.intent,
-										},
-										"speech",
-									);
-
-									speakText(response.response.content);
-									transcript.value = [
-										...transcript.value,
-										{ message: finalTranscript, source: "user" },
-										{ message: response.response.content, source: "ai" },
-									];
-								}
-							})
-							.catch((error) => {
-								console.error("Error generating response:", error);
-								debugLog("Failed to generate response", { error }, "speech");
-							});
-					}
-				} else if (interimTranscript) {
-					currentTranscriptRef.current = interimTranscript;
-					isUserSpeaking.value = true;
-					debugLog(
-						"User speaking",
-						{
-							transcript: interimTranscript,
-							volume: conversation.value?.getInputVolume() || 0,
-						},
-						"user",
-					);
-				}
-			};
+	const handleStart = async () => {
+		try {
+			console.log("Starting speech control..."); // Debug log
+			await speechControl.initialize();
+			console.log("Speech control initialized"); // Debug log
+		} catch (error) {
+			console.error("Failed to start conversation:", error);
+			alert("Failed to start conversation. Please try again.");
 		}
-	}, [recognition.value]);
+	};
 
-	return (
-		<>
-			<div className="flex flex-col h-screen bg-gray-900 text-gray-100">
-				{/* Top toolbar */}
-				<div className="h-14 flex justify-between items-center px-4 bg-gray-800/50 backdrop-blur-sm border-b border-gray-700/50">
-					<div className="flex items-center gap-4">
-						<h2 className="text-sm font-medium text-gray-300">
-							{agentName.value || "Voice Chat"}
-						</h2>
-						<StatusIndicator />
-					</div>
-					<div className="flex items-center gap-4">
-						<VolumeControl />
-						{isConnected.value && (
-							<button
-								onClick={endConversation}
-								className={cn(
-									buttonStyles,
-									"text-red-200/70 hover:text-red-200",
-								)}
-							>
-								End Conversation
-							</button>
-						)}
-					</div>
-				</div>
+	const handleStop = async () => {
+		try {
+			await speechControl.stop();
+		} catch (error) {
+			console.error("Failed to end conversation:", error);
+		}
+	};
 
-				<div className="flex-1 flex">
-					{/* Main content */}
-					<div className="flex-1 flex flex-col items-center justify-center p-4 relative">
-						<div className="w-full max-w-sm space-y-4">
-							{!new URLSearchParams(window.location.search).get("agentId") ? (
-								<div className="text-center space-y-3">
-									<div className="text-gray-400">
-										No agent ID provided. You need a unique link to access an
-										agent.
-									</div>
-									<div className="text-sm text-gray-500">
-										Use the create-agent script to generate a new agent and get
-										its URL.
-									</div>
-								</div>
-							) : !isConnected.value ? (
-								<div className="text-center space-y-4">
-									<button
-										onClick={startConversation}
-										className={cn(
-											buttonStyles,
-											"w-full text-blue-200/70 hover:text-blue-200",
-										)}
-									>
-										Start Conversation
-									</button>
-									<div className="text-sm text-gray-500">
-										Click the button above to start talking with{" "}
-										{agentName.value}
-									</div>
-								</div>
-							) : (
-								<AgentCircle />
-							)}
-						</div>
-						<TranscriptToggle />
-					</div>
-
-					<TranscriptSidebar />
-				</div>
-			</div>
-			<DebugPanel />
-		</>
-	);
+	return <VoiceChatUI onStart={handleStart} onStop={handleStop} />;
 }
