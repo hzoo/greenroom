@@ -617,50 +617,57 @@ async function startConversation() {
 		}
 
 		debugLog("Getting signed URL for agent:", agentId);
-		const signedUrl = await getSignedUrl(agentId);
-		debugLog("Got signed URL:", signedUrl);
+		try {
+			const signedUrl = await getSignedUrl(agentId);
+			debugLog("Got signed URL:", signedUrl);
 
-		debugLog("Starting session...");
-		const conv = await Conversation.startSession({
-			signedUrl,
-			onConnect: (props) => {
-				debugLog("Connected to conversation:", props);
-				isConnected.value = true;
-				isSpeaking.value = true;
-			},
-			onDisconnect: (details) => {
-				debugLog("Disconnected from conversation:", details);
-				isConnected.value = false;
-				isSpeaking.value = false;
-			},
-			onError: (error, context) => {
-				debugLog("Conversation error:", { error, context });
-				console.error("Conversation error:", error);
-				alert("An error occurred during the conversation.");
-			},
-			onModeChange: (mode) => {
-				debugLog("Mode changed:", mode);
-				isSpeaking.value = mode.mode === "speaking";
-				isUserSpeaking.value = mode.mode === "listening";
-			},
-			onMessage: (msg) => {
-				debugLog("Message received:", msg);
-				transcript.value = [
-					...transcript.value,
-					{ message: msg.message, source: msg.source },
-				];
-			},
-			onStatusChange: (status) => {
-				debugLog("Status changed:", status);
-			},
-		});
-		debugLog("Session started successfully");
-		conversation.value = conv;
-		debugLog("Conversation ID:", conv.getId());
+			debugLog("Starting session...");
+			const conv = await Conversation.startSession({
+				signedUrl,
+				onConnect: (props) => {
+					debugLog("Connected to conversation:", props);
+					isConnected.value = true;
+					isSpeaking.value = true;
+				},
+				onDisconnect: (details) => {
+					debugLog("Disconnected from conversation:", details);
+					isConnected.value = false;
+					isSpeaking.value = false;
+				},
+				onError: (error, context) => {
+					debugLog("Conversation error:", { error, context });
+					console.error("Conversation error:", error);
+					alert("An error occurred during the conversation.");
+				},
+				onModeChange: (mode) => {
+					debugLog("Mode changed:", mode);
+					isSpeaking.value = mode.mode === "speaking";
+					isUserSpeaking.value = mode.mode === "listening";
+				},
+				onMessage: (msg) => {
+					debugLog("Message received:", msg);
+					transcript.value = [
+						...transcript.value,
+						{ message: msg.message, source: msg.source },
+					];
+				},
+				onStatusChange: (status) => {
+					debugLog("Status changed:", status);
+				},
+			});
+			debugLog("Session started successfully");
+			conversation.value = conv;
+			debugLog("Conversation ID:", conv.getId());
 
-		// Set initial volume
-		debugLog("Setting initial volume:", volume.value);
-		conv.setVolume({ volume: volume.value });
+			// Set initial volume
+			debugLog("Setting initial volume:", volume.value);
+			conv.setVolume({ volume: volume.value });
+		} catch (error) {
+			debugLog("Invalid agent URL:", error);
+			alert(
+				"This agent link appears to be invalid or has expired. Please check your link and try again.",
+			);
+		}
 	} catch (error) {
 		debugLog("Error starting conversation:", error);
 		console.error("Error starting conversation:", error);
@@ -742,15 +749,21 @@ export function VoiceChat() {
 									</div>
 								</div>
 							) : !isConnected.value ? (
-								<button
-									onClick={startConversation}
-									className={cn(
-										buttonStyles,
-										"w-full text-blue-200/70 hover:text-blue-200",
-									)}
-								>
-									Start Conversation
-								</button>
+								<div className="text-center space-y-4">
+									<button
+										onClick={startConversation}
+										className={cn(
+											buttonStyles,
+											"w-full text-blue-200/70 hover:text-blue-200",
+										)}
+									>
+										Start Conversation
+									</button>
+									<div className="text-sm text-gray-500">
+										Click the button above to start talking with{" "}
+										{agentName.value}
+									</div>
+								</div>
 							) : (
 								<AgentCircle />
 							)}
