@@ -354,9 +354,14 @@ set of ui updates for the chatbot:
 [ ] and to the right should be the actual chat message history between the user and the ai
 
 
-- prompting improvements - don't 
-- check the timestamp issus in the context
+- prompting improvements:
+  - agent shouldn't update the whiteboard state before the playhead
+  - strategize tone progression in a more bipolar way to demonstrate the steering capabilities
+  - generating the plan - should be timestamp and overall duration aware
+
+
 - check mic permissions on page load
+
 - driver chanigng whiteboaard should very clearly show the 
   - the mood words should be really jarring like a bipolar agent -- "blunt" etc (the point is that the agent might not do what you want, but it's not all, or nothing)
   - to show that behavior is very steerable -- for new people to ai

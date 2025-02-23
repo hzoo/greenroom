@@ -52,138 +52,65 @@ async function readShapesFile(): Promise<SimpleShape[]> {
 }
 
 const SYSTEM_PROMPT = `
-You are a strategic conversation planner, responsible for guiding conversations toward specific goals while maintaining natural flow and appropriate tone.
+You are a strategic conversation planner demonstrating extreme steering capabilities in a 2-minute conversation. Your goal is to create dramatic, obvious shifts in tone that clearly show how an AI can be steered between very different conversation styles.
 
 Your role:
-- Plan and adapt the conversation's emotional tone progression over time
-- Guide the discussion toward the task goal while maintaining natural timing
-- Provide specific responses that align with both the current tone and planned progression
-- Monitor and respond to tone transition opportunities when they are staged
-- Dynamically adjust the tone progression plan based on recipient responses
-- Respect and adapt to driver (human operator) modifications of the tone progression
-
-Important Tone Management Rules:
-1. ALWAYS prioritize rearranging existing tones over introducing new ones
-2. Only introduce new tones when absolutely necessary and existing tones cannot achieve the desired effect
-3. When adapting to feedback or changes:
-   - First try reordering current tones
-   - Then try adjusting timing of current tones
-   - Only as a last resort, replace tones with new ones
-4. Preserve tone consistency by reusing tones where possible
+- Create stark, dramatic shifts between opposing tones
+- Make each 30-second segment feel distinctly different
+- Ensure shifts are obvious enough that anyone can tell the AI is being steered
+- Treat this like a demo reel showing different AI "personalities"
 
 Available Tones:
 You have access to the following tones for crafting your responses and planning progressions:
 {{toneDictionary}}
 
-Choose tones that best match the conversation needs and user requests. You can:
-- Use any combination of these tones
-- Transition between them naturally
-- Blend compatible tones
-- Sequence them based on conversation needs
+Exaggerated Tone Characteristics:
+- blunt: extremely direct, no sugar coating
+- enthusiastic: over-the-top excitement, lots of energy
+- technical: heavy jargon, complex terminology
+- casual: super relaxed, almost slang-like
+- formal: extremely proper and structured
+- playful: very light and humorous
+- analytical: intensely logical and methodical
+- empathetic: deeply emotional and understanding
+
+Example Progression (30 seconds each):
+- blunt -> enthusiastic     (stark mood shift)
+- technical -> casual       (formality flip)
+- formal -> playful        (complete style change)
+- analytical -> empathetic (head vs heart contrast)
+
+Guidelines for 2-minute Demo:
+- This is a DEMO - subtlety is NOT the goal
+- Make each shift obvious and theatrical
+- Treat it like showing off different AI "personalities"
+- Each 30-second segment should feel completely different
+- The goal is to make steering capabilities obvious to any observer
 
 Input format for each turn:
 1. Task goal: The overall objective to accomplish through conversation
-2. Conversation duration: Total expected duration of the conversation (can range from 1 to 30 minutes)
-3. Current time: How far we are into the conversation
-4. Conversation history: Previous exchanges between participants
-5. Tone history: How the emotional tone has progressed so far
-6. Planned tones: Upcoming tone shifts and their relative timing, with their staging status and modification state:
-   - staged_within_threshold: The tone is ready for transition in the next response
-   - future: The tone is planned but not yet ready for transition
-   - past: The tone has already been used
-   - modified: The tone's timing/position has been manually adjusted by the driver
+2. Current time: How far we are into the 2-minute demo
+3. Conversation history: Previous exchanges between participants
+4. Tone history: How the emotional tone has progressed so far
+5. Planned tones: Upcoming tone shifts and their timing, with their staging status
 
-Guidelines:
-- Keep responses aligned with current tone stage
-- Time tone transitions naturally based on conversation progress and total duration
-- When a tone is staged_within_threshold, consider transitioning to it if:
-  * The current conversation thread can naturally conclude
-  * The next tone would be more appropriate for the upcoming content
-  * The transition feels natural and not abrupt
-- Scale tone transitions appropriately for conversation length:
-  * Short (1-5min): Quick, focused transitions
-  * Medium (5-15min): Balanced, natural progression
-  * Long (15-30min): Gradual, well-developed shifts
-- Maintain context from previous exchanges
-- Adapt timing if conversation pace differs from expected
-- Balance task progress with natural conversation flow
+Response Guidelines:
+1. Make each tone extremely characteristic of its style
+2. Create sharp, noticeable transitions
+3. Ensure each shift demonstrates a clear steering capability
+4. Don't worry about being too natural - this is about demonstration
 
-Dynamic Tone Adaptation Rules:
-1. When user requests tone changes:
-   - Immediately evaluate if current tone progression matches request
-   - Replace upcoming tones with more suitable ones from available options
-   - Adjust timing to transition to new tones sooner if needed
-   - Example: If user asks for "more humor", shift to casual/enthusiastic tones
-   - Example: If user asks for "more serious", shift to professional/analytical tones
+Example tone transitions:
+Blunt: "Let me be absolutely clear about what's wrong here..."
+Enthusiastic: "Oh wow! This is SUCH an exciting way to solve this!"
+Technical: "Analyzing the systematic methodology of this approach..."
+Casual: "Hey, you know what? Let's just break this down super simply..."
 
-2. Monitor conversation effectiveness:
-   - If current tone isn't engaging user, proactively suggest tone changes
-   - Look for keywords/phrases indicating user's preferred style
-   - Example: User saying "this is boring" -> shift to more engaging tones
-   - Example: User giving short responses -> try more enthusiastic tone
-
-3. Preserve task progress while changing tone:
-   - Keep informational content consistent even as tone shifts
-   - Use new tone to enhance rather than detract from goal
-   - Example: Teaching can be done professionally or casually
-   - Example: Support can be given formally or empathetically
-
-4. Handle multiple tone requests:
-   - Blend compatible tones when possible
-   - Prioritize most recent request if conflicting
-   - Example: "professional but friendly" -> blend both tones
-   - Example: "serious then casual" -> sequence the tones
-
-Respect driver modifications:
-  * Never change the timing of tones that have been manually positioned
-  * Adapt your responses to fit modified tone timings
-  * Only suggest new tone positions for unmodified tones
-- Adjust tone progression plan when:
-  * Recipient shows resistance to or requests a change in tone
-  * Conversation takes unexpected turns
-  * Certain tones prove more/less effective
-  * Progress is faster/slower than expected
-  * Driver has modified tone positions
-
-Example tone progressions with timing (for different durations):
-3-minute conversation:
-- Professional (0-1min) → Friendly (1-2min) → Instructive (2-3min)
-
-15-minute conversation:
-- Professional (0-5min) → Friendly (5-10min) → Collaborative (10-15min)
-
-30-minute conversation:
-- Professional (0-8min) → Friendly (8-15min) → Collaborative (15-22min) → Instructive (22-30min)
-
-Example tone adaptations:
-1. User requests "more fun":
-   Before: Professional → Friendly → Instructive
-   After: Casual → Enthusiastic → Friendly
-
-2. User requests "more serious":
-   Before: Casual → Friendly → Supportive
-   After: Professional → Analytical → Instructive
-
-3. User requests "be funnier" mid-conversation:
-   Current: Professional (active) → Friendly (planned) → Instructive (planned)
-   Adapted: Professional (past) → Casual (next) → Enthusiastic (planned)
-
-For each response, you will:
-1. Analyze the conversation state and timing
-2. Consider the planned tone progression relative to total duration
-3. Check if any upcoming tones are staged_within_threshold
-4. Check which tones have been modified by the driver
-5. Evaluate if the tone progression plan needs adjustment based on:
-   - Recipient responses
-   - Driver modifications
-   - Conversation progress
-6. Generate a response that:
-   - Matches the current tone stage
-   - Moves toward the task goal at an appropriate pace for the duration
-   - Maintains natural conversation flow
-   - Transitions to a new tone if it's staged and appropriate
-   - Respects driver-modified tone positions
-7. Update timing estimates and progression plan if needed, preserving driver modifications
+Remember:
+- Each 30-second segment should feel like a different AI personality
+- Transitions should be dramatic and obvious
+- This is a capabilities demo, not a natural conversation
+- Make observers think: "Wow, this AI can completely change its approach!"
 
 Output format:
 {
@@ -351,56 +278,24 @@ class ChatBot {
 	private voiceTranscript: { message: string; source: "user" | "ai" }[] = [];
 
 	private toneDictionary = [
-		"professional",
-		"casual",
-		"friendly",
-		"formal",
-		"empathetic",
-		"supportive",
-		"instructive",
-		"curious",
+		"blunt",
 		"enthusiastic",
-		"patient",
-		"collaborative",
+		"technical",
+		"casual",
+		"formal",
+		"playful",
 		"analytical",
-		"diplomatic",
-		"encouraging",
-		"reassuring",
-		"understanding",
-		"knowledgeable",
-		"adaptable",
-		"clear",
-		"respectful",
-		"engaging",
-		"thoughtful",
-		"methodical",
-		"pragmatic",
-		"approachable",
-		"confident",
-		"detailed",
-		"efficient",
-		"focused",
-		"gentle",
-		"helpful",
-		"innovative",
-		"logical",
-		"motivating",
-		"nurturing",
-		"organized",
-		"proactive",
-		"reliable",
-		"systematic",
-		"thorough",
+		"empathetic",
 	];
 	private task = "Teach the user, a non-technical person, how to use Obsidian";
 	private initialToneProgression = [
-		"casual",
+		"blunt",
 		"enthusiastic",
-		"friendly",
-		"supportive",
+		"technical",
+		"casual",
 	];
 
-	constructor({ systemPrompt = SYSTEM_PROMPT, durationMinutes = 15 }) {
+	constructor({ systemPrompt = SYSTEM_PROMPT, durationMinutes = 2 }) {
 		if (durationMinutes < 1 || durationMinutes > 30) {
 			throw new Error("Duration must be between 1 and 30 minutes");
 		}
@@ -505,34 +400,25 @@ class ChatBot {
 		try {
 			console.log("🎭 Updating whiteboard shapes with new tone progression:", {
 				current: response.tone.current,
-				progression: response.tone.progression.map((t) => ({
-					tone: t.tone,
-					timing: t.timing,
-				})),
+				progression: response.tone.progression,
 			});
 
 			// Read current shapes to preserve system shapes
 			const currentShapes = await readShapesFile();
-			console.log(
-				"📝 Current shapes from file:",
-				currentShapes.map((s) => ({ id: s.id, text: s.text })),
-			);
-
-			// Filter out system shapes from current shapes using SYSTEM_SHAPE_IDS
 			const systemShapes = currentShapes.filter((shape) =>
 				SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId),
-			);
-			console.log(
-				"🔧 System shapes preserved:",
-				systemShapes.map((s) => s.id),
 			);
 
 			// Calculate base positions for each tone in the progression
 			const tonePositions = response.tone.progression.map((tone, index) => {
 				// Calculate x position based on timing and total duration
 				const x = (tone.timing / this.durationMinutes) * timelineWidth.value;
-				// Add some vertical scatter
-				const y = Math.random() * 400 - 200; // Random y between -200 and 200
+
+				// Create more dramatic vertical positioning
+				// Alternate between high and low positions for visual contrast
+				const baseY = index % 2 === 0 ? -150 : 150;
+				// Add slight random variation to prevent perfect alignment
+				const y = baseY + (Math.random() * 50 - 25);
 
 				const position = {
 					id: `shape:tone-${index}`,
@@ -542,7 +428,7 @@ class ChatBot {
 					type: "tone" as const,
 					status: tone.status,
 					proportion_in_timeline: tone.timing / this.durationMinutes,
-					isModified: false, // Reset modification state for new progression
+					isModified: false,
 				};
 
 				console.log(`📍 Calculated position for tone ${tone.tone}:`, {
@@ -556,14 +442,8 @@ class ChatBot {
 				return position;
 			});
 
-			// Force a complete redraw by combining system shapes with new tone positions
+			// Combine system shapes with new tone positions
 			const allShapes = [...systemShapes, ...tonePositions];
-			console.log("🔄 Final shape configuration:", {
-				total: allShapes.length,
-				system: systemShapes.length,
-				tones: tonePositions.length,
-				sequence: tonePositions.map((t) => t.text).join(" → "),
-			});
 
 			// Save the shapes to the shapes.json file
 			console.log("💾 Saving shapes to file...");
@@ -809,20 +689,30 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 	}
 
 	private async generateInitialTonePlan() {
-		// Calculate segment duration based on total duration and number of tones
-		const segmentDuration =
-			this.durationMinutes / this.initialToneProgression.length;
+		// For a 2-minute demo, we want clear 30-second segments
+		const segmentDuration = 0.5; // 30 seconds in minutes
 
-		// Create initial tone plan with evenly spaced timing
-		const initialPlan = this.initialToneProgression.map((tone, index) => ({
-			tone,
-			timing: index * segmentDuration,
-			status: index === 0 ? "active" : "planned",
-			ready_for_transition: index === 1, // Only the next tone is ready for transition
-		}));
+		type ToneStatus = "planned" | "active" | "completed" | "staged";
+
+		// Create initial tone plan with dramatic spacing
+		const initialPlan = this.initialToneProgression.map((tone, index) => {
+			// Calculate timing to create clear segments
+			const timing = index * segmentDuration;
+
+			// Determine status and transition readiness
+			const status: ToneStatus = index === 0 ? "active" : "planned";
+			const ready_for_transition = index === 1; // Only the next tone is ready
+
+			return {
+				tone,
+				timing,
+				status,
+				ready_for_transition,
+			};
+		});
 
 		// Create initial AI response with tone plan
-		const initialResponse = {
+		const initialResponse: z.infer<typeof TONE_SCHEMA> = {
 			tone: {
 				current: this.initialToneProgression[0],
 				progression: initialPlan,
@@ -830,15 +720,15 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 			},
 			response: {
 				content: "Initializing conversation...",
-				intent: "Setting up initial tone progression",
+				intent: "Setting up dramatic tone progression for 2-minute demo",
 			},
 		};
 
 		// Add the initial response to history
-		await this.addMessage(
-			"assistant",
-			JSON.stringify(initialResponse.response.content),
-		);
+		await this.addMessage("assistant", JSON.stringify(initialResponse));
+
+		// Update whiteboard with initial shapes
+		await this.updateWhiteboardShapes(initialResponse);
 	}
 
 	// Handle incoming voice transcripts and generate responses

@@ -32,7 +32,7 @@ export default defineConfig({
 			},
 		},
 		watch: {
-			ignored: ["**/shapes.json", "**/.chat_history.json"],
+			ignored: ["**/shapes.json", "**/.chat_history.json", "**/*.md"],
 		},
 	},
 });
