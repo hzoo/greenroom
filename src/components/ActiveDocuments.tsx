@@ -216,7 +216,7 @@ const ShapeItem = memo(function ShapeItem({ shape }: { shape: TLShape }) {
 		>
 			<div className="flex items-center gap-3">
 				<span className="text-gray-400 text-[10px] uppercase">{status}</span>
-				<span className="text-gray-300">{shape.id.slice(-8)}</span>
+				{/* <span className="text-gray-300">{shape.id.slice(-8)}</span> */}
 				{props.text && (
 					<span className="text-gray-400 truncate max-w-[200px]">
 						"{props.text}"
