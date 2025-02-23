@@ -19,9 +19,8 @@ export const speechControl = new SpeechControl(
 				);
 				if (response) {
 					debugLog("Got chatbot response:", response, "speech");
-					// Update transcript
+					// Only add AI response since user message was already added
 					transcript.value = transcript.value.concat([
-						{ message: transcriptText, source: "user" },
 						{ message: response.response.content, source: "ai" },
 					]);
 					// Speak response
