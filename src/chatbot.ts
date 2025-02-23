@@ -235,6 +235,18 @@ const TONE_SCHEMA = z.object({
 	}),
 });
 
+interface ConversationContext {
+	task: {
+		progress: number;
+		elapsed: number;
+	};
+	currentTone: string;
+	toneHistory: Array<{ tone: string; timestamp: number }>;
+	nextTones: Array<{ tone: string; timing: number }>;
+	conversationLength: number;
+	elapsed: number;
+}
+
 type Context = {
 	conversationHistory: ChatMessage[];
 	toneHistory: {
@@ -346,6 +358,10 @@ class ChatBot {
 		nextTonePlan: [],
 	};
 	private durationMinutes: number;
+
+	// New properties for voice chat
+	private lastVoiceResponse: z.infer<typeof TONE_SCHEMA> | null = null;
+	private voiceTranscript: { message: string; source: "user" | "ai" }[] = [];
 
 	constructor(
 		systemPrompt = SYSTEM_PROMPT,
@@ -479,6 +495,21 @@ class ChatBot {
 
 	public getHistory(): ChatMessage[] {
 		return this.history;
+	}
+
+	public async getCurrentContext(): Promise<ConversationContext> {
+		await this.updateContext();
+		return {
+			task: {
+				progress: this.context.task.progress,
+				elapsed: this.context.task.elapsed,
+			},
+			currentTone: this.initialToneProgression[this.currentToneIndex],
+			toneHistory: this.toneHistory,
+			nextTones: this.context.nextTonePlan,
+			conversationLength: this.durationMinutes,
+			elapsed: this.context.task.elapsed,
+		};
 	}
 
 	public async cleanup() {
@@ -823,6 +854,44 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 			"assistant",
 			JSON.stringify(initialResponse.response.content),
 		);
+	}
+
+	// Handle incoming voice transcripts and generate responses
+	public async handleVoiceTranscript(
+		message: string,
+		source: "user" | "ai",
+	): Promise<z.infer<typeof TONE_SCHEMA> | undefined> {
+		// Add message to voice transcript
+		this.voiceTranscript.push({ message, source });
+
+		// If message is from user, generate and return AI response
+		if (source === "user") {
+			await this.addMessage("user", message);
+			const response = await this.getAIResponse();
+			if (response) {
+				this.lastVoiceResponse = response;
+				await this.addMessage("assistant", JSON.stringify(response));
+			}
+			return response;
+		}
+
+		// If message is from AI, just record it
+		await this.addMessage("assistant", message);
+		return undefined;
+	}
+
+	// Get the current tone state
+	public getCurrentToneState(): { tone: string; intent: string } | null {
+		if (!this.lastVoiceResponse) return null;
+		return {
+			tone: this.lastVoiceResponse.tone.current,
+			intent: this.lastVoiceResponse.response.intent,
+		};
+	}
+
+	// Get the voice transcript
+	public getVoiceTranscript(): { message: string; source: "user" | "ai" }[] {
+		return this.voiceTranscript;
 	}
 }
 

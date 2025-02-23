@@ -1,23 +1,35 @@
 import { signal, effect } from "@preact/signals-react";
-import { Conversation } from "@11labs/client";
 import type { Role } from "@11labs/client";
 import { useEffect, memo, useRef } from "react";
 import { useSignalEffect, useSignals } from "@preact/signals-react/runtime";
 import { cn } from "@/lib/utils";
 import { createPersistedSignal } from "@/store/signals";
+import ChatBot from "@/chatbot";
 
 // Debug logging for signal changes
-function debugLog(message: string, data?: unknown) {
+function debugLog(
+	message: string,
+	data?: unknown,
+	type: "tone" | "speech" | "user" | "system" = "system",
+) {
+	const colors = {
+		tone: "#8b5cf6", // Purple for tone context
+		speech: "#3b82f6", // Blue for speech generation
+		user: "#10b981", // Green for user input
+		system: "#94a3b8", // Gray for system messages
+	};
+
 	console.log(
-		`%c[Debug] %c${message}`,
-		"color: #8b5cf6",
-		"color: #94a3b8",
-		data ?? "",
+		`%c[${type.toUpperCase()}] %c${message}`,
+		`color: ${colors[type]}; font-weight: bold`,
+		`color: ${colors[type]}`,
+		data ? "\n" : "",
+		data ? data : "",
 	);
 }
 
 // Conversation state signals
-export const conversation = signal<Conversation | null>(null);
+export const conversation = signal<null>(null);
 export const isConnected = signal(false);
 export const isSpeaking = signal(false);
 export const isUserSpeaking = signal(false);
@@ -26,9 +38,24 @@ export const agentId = signal<string>("");
 export const volume = signal(1);
 export const transcript = signal<Array<{ message: string; source: Role }>>([]);
 
+// ChatBot instance signal
+export const chatbot = signal<ChatBot | null>(null);
+
 // Debug mode signal
 const isDebugMode = signal(true);
 const debugPanelHeight = signal(300);
+
+// Add at the top level with other signals
+export const audioContext = signal<AudioContext | null>(null);
+
+// Add these new signals at the top with other signals
+export const audioStream = signal<MediaStream | null>(null);
+export const speechDetector = signal<{
+	context: AudioContext;
+	analyzer: AnalyserNode;
+	source: MediaStreamAudioSourceNode;
+} | null>(null);
+export const isListening = signal(false);
 
 // Debounce volume changes for conversation
 effect(() => {
@@ -405,7 +432,7 @@ const DebugControls = memo(function DebugControls() {
 	const toggleConnection = () => {
 		if (!isConnected.value) {
 			isConnected.value = true;
-			conversation.value = mockConversation as unknown as Conversation;
+			conversation.value = mockConversation;
 		} else {
 			isConnected.value = false;
 			conversation.value = null;
@@ -598,6 +625,209 @@ async function getSignedUrl(agentId: string) {
 	}
 }
 
+// Add at the top level with other signals
+export const audioQueue = signal<{
+	chunks: Array<{
+		buffer: AudioBuffer;
+		alignment?: {
+			charStartTimesMs: number[];
+			charDurationsMs: number[];
+			chars: string[];
+		};
+	}>;
+	isPlaying: boolean;
+}>({ chunks: [], isPlaying: false });
+
+// Add AudioQueueManager class before the startConversation function
+class AudioQueueManager {
+	private ctx: AudioContext;
+	private currentSource: AudioBufferSourceNode | null = null;
+	private nextStartTime: number = 0;
+
+	constructor(ctx: AudioContext) {
+		this.ctx = ctx;
+	}
+
+	async addToQueue(
+		arrayBuffer: ArrayBuffer,
+		alignment?: {
+			charStartTimesMs: number[];
+			charDurationsMs: number[];
+			chars: string[];
+		},
+	) {
+		try {
+			const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+			audioQueue.value = {
+				...audioQueue.value,
+				chunks: [
+					...audioQueue.value.chunks,
+					{ buffer: audioBuffer, alignment },
+				],
+			};
+			this.processQueue();
+		} catch (error) {
+			console.error("Error decoding audio for queue:", error);
+		}
+	}
+
+	private processQueue() {
+		if (audioQueue.value.isPlaying || audioQueue.value.chunks.length === 0) {
+			return;
+		}
+
+		audioQueue.value = { ...audioQueue.value, isPlaying: true };
+		this.playNextChunk();
+	}
+
+	private playNextChunk() {
+		if (audioQueue.value.chunks.length === 0) {
+			audioQueue.value = { ...audioQueue.value, isPlaying: false };
+			return;
+		}
+
+		const { buffer, alignment } = audioQueue.value.chunks[0];
+		audioQueue.value = {
+			...audioQueue.value,
+			chunks: audioQueue.value.chunks.slice(1),
+		};
+
+		const source = this.ctx.createBufferSource();
+		source.buffer = buffer;
+		source.connect(this.ctx.destination);
+
+		// Calculate start time for precise scheduling
+		const startTime = Math.max(this.ctx.currentTime, this.nextStartTime);
+		source.start(startTime);
+		this.nextStartTime = startTime + buffer.duration;
+
+		// Log alignment data for debugging
+		if (alignment) {
+			debugLog(
+				"Playing audio chunk with alignment",
+				{
+					duration: buffer.duration,
+					chars: alignment.chars.join(""),
+					startTimes: alignment.charStartTimesMs,
+				},
+				"speech",
+			);
+		}
+
+		source.onended = () => {
+			this.currentSource = null;
+			this.playNextChunk();
+		};
+
+		this.currentSource = source;
+	}
+
+	clear() {
+		if (this.currentSource) {
+			this.currentSource.stop();
+			this.currentSource.disconnect();
+			this.currentSource = null;
+		}
+		audioQueue.value = { chunks: [], isPlaying: false };
+		this.nextStartTime = 0;
+	}
+}
+
+// Update the speakText function
+async function speakText(text: string) {
+	const ctx = audioContext.value;
+	if (!ctx) {
+		console.error("No audio context available");
+		return;
+	}
+
+	debugLog("Sending text to speech", { text }, "speech");
+	isSpeaking.value = true;
+
+	// Create queue manager instance
+	const queueManager = new AudioQueueManager(ctx);
+
+	const ws = new WebSocket(
+		"wss://api.elevenlabs.io/v1/text-to-speech/JBFqnCBsd6RMkjVDRZzb/stream-input?optimize_streaming_latency=0",
+	);
+
+	ws.onopen = () => {
+		ws.send(
+			JSON.stringify({
+				text: " ",
+				voice_settings: {
+					stability: 0.5,
+					similarity_boost: 0.8,
+				},
+				"xi-api-key": import.meta.env.VITE_ELEVENLABS_API_KEY,
+			}),
+		);
+
+		ws.send(
+			JSON.stringify({
+				text,
+				try_trigger_generation: true,
+			}),
+		);
+
+		ws.send(JSON.stringify({ text: "" }));
+	};
+
+	ws.onmessage = async (event) => {
+		const data = JSON.parse(event.data);
+		if (data.audio) {
+			debugLog(
+				"Received audio chunk",
+				{
+					length: data.audio.length,
+					isFinal: data.isFinal,
+					hasAlignment: !!data.alignment,
+				},
+				"speech",
+			);
+
+			try {
+				// Convert base64 to ArrayBuffer
+				const audioData = atob(data.audio);
+				const arrayBuffer = new ArrayBuffer(audioData.length);
+				const view = new Uint8Array(arrayBuffer);
+				for (let i = 0; i < audioData.length; i++) {
+					view[i] = audioData.charCodeAt(i);
+				}
+
+				// Add to queue with alignment data if available
+				await queueManager.addToQueue(
+					arrayBuffer,
+					data.normalizedAlignment || data.alignment,
+				);
+
+				if (data.isFinal) {
+					debugLog("Final audio chunk received", null, "speech");
+					ws.close();
+				}
+			} catch (error) {
+				console.error("Error processing audio chunk:", error);
+			}
+		}
+	};
+
+	ws.onerror = (error) => {
+		console.error("WebSocket error:", error);
+		queueManager.clear();
+		isSpeaking.value = false;
+		ws.close();
+	};
+
+	ws.onclose = () => {
+		debugLog("WebSocket closed", null, "speech");
+		// Keep isSpeaking true until the last chunk finishes playing
+		if (!audioQueue.value.chunks.length && !audioQueue.value.isPlaying) {
+			isSpeaking.value = false;
+		}
+	};
+}
+
+// Replace startConversation with our own implementation
 async function startConversation() {
 	debugLog("Starting conversation...");
 	try {
@@ -616,58 +846,88 @@ async function startConversation() {
 			return;
 		}
 
-		debugLog("Getting signed URL for agent:", agentId);
-		try {
-			const signedUrl = await getSignedUrl(agentId);
-			debugLog("Got signed URL:", signedUrl);
+		// Initialize ChatBot
+		const bot = new ChatBot();
+		await bot.initialize();
+		chatbot.value = bot;
 
-			debugLog("Starting session...");
-			const conv = await Conversation.startSession({
-				signedUrl,
-				onConnect: (props) => {
-					debugLog("Connected to conversation:", props);
-					isConnected.value = true;
-					isSpeaking.value = true;
-				},
-				onDisconnect: (details) => {
-					debugLog("Disconnected from conversation:", details);
-					isConnected.value = false;
-					isSpeaking.value = false;
-				},
-				onError: (error, context) => {
-					debugLog("Conversation error:", { error, context });
-					console.error("Conversation error:", error);
-					alert("An error occurred during the conversation.");
-				},
-				onModeChange: (mode) => {
-					debugLog("Mode changed:", mode);
-					isSpeaking.value = mode.mode === "speaking";
-					isUserSpeaking.value = mode.mode === "listening";
-				},
-				onMessage: (msg) => {
-					debugLog("Message received:", msg);
-					transcript.value = [
-						...transcript.value,
-						{ message: msg.message, source: msg.source },
-					];
-				},
-				onStatusChange: (status) => {
-					debugLog("Status changed:", status);
-				},
-			});
-			debugLog("Session started successfully");
-			conversation.value = conv;
-			debugLog("Conversation ID:", conv.getId());
+		// Initialize audio context and analyzer for speech detection
+		const context = new AudioContext();
+		audioContext.value = context;
 
-			// Set initial volume
-			debugLog("Setting initial volume:", volume.value);
-			conv.setVolume({ volume: volume.value });
-		} catch (error) {
-			debugLog("Invalid agent URL:", error);
-			alert(
-				"This agent link appears to be invalid or has expired. Please check your link and try again.",
-			);
+		// Set up audio stream for microphone
+		const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+		audioStream.value = stream;
+
+		// Create analyzer node for speech detection
+		const analyzer = context.createAnalyser();
+		analyzer.fftSize = 2048;
+		const source = context.createMediaStreamSource(stream);
+		source.connect(analyzer);
+
+		speechDetector.value = { context, analyzer, source };
+
+		// Start speech detection loop
+		let silenceStart = Date.now();
+		const silenceThreshold = -50; // dB
+		const silenceTimeout = 1000; // ms
+
+		function detectSpeech() {
+			if (!isListening.value || !speechDetector.value) return;
+
+			const { analyzer } = speechDetector.value;
+			const dataArray = new Float32Array(analyzer.frequencyBinCount);
+			analyzer.getFloatFrequencyData(dataArray);
+
+			// Calculate average volume
+			const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+
+			if (average > silenceThreshold) {
+				if (!isUserSpeaking.value) {
+					debugLog("User started speaking", { volume: average }, "user");
+					isUserSpeaking.value = true;
+				}
+				silenceStart = Date.now();
+			} else if (
+				isUserSpeaking.value &&
+				Date.now() - silenceStart > silenceTimeout
+			) {
+				debugLog(
+					"User stopped speaking",
+					{ silenceDuration: Date.now() - silenceStart },
+					"user",
+				);
+				isUserSpeaking.value = false;
+				// TODO: Trigger speech-to-text processing here
+			}
+
+			requestAnimationFrame(detectSpeech);
 		}
+
+		// Start listening
+		isListening.value = true;
+		isConnected.value = true;
+		detectSpeech();
+
+		// Handle user speech end and generate response
+		effect(() => {
+			if (!isUserSpeaking.value && chatbot.value) {
+				// TODO: Get speech-to-text transcript and process it
+				const mockTranscript = "This is a mock transcript"; // Replace with actual STT
+				chatbot.value
+					.handleVoiceTranscript(mockTranscript, "user")
+					.then((response) => {
+						if (response) {
+							speakText(response.response.content);
+							transcript.value = [
+								...transcript.value,
+								{ message: mockTranscript, source: "user" },
+								{ message: response.response.content, source: "ai" },
+							];
+						}
+					});
+			}
+		});
 	} catch (error) {
 		debugLog("Error starting conversation:", error);
 		console.error("Error starting conversation:", error);
@@ -675,13 +935,42 @@ async function startConversation() {
 	}
 }
 
+// Update endConversation to clean up our new resources
 async function endConversation() {
 	debugLog("Ending conversation...");
-	if (conversation.value) {
-		await conversation.value.endSession();
-		conversation.value = null;
-		debugLog("Conversation ended");
+
+	// Stop listening
+	isListening.value = false;
+	isConnected.value = false;
+	isSpeaking.value = false;
+	isUserSpeaking.value = false;
+
+	// Clean up audio resources
+	if (speechDetector.value) {
+		speechDetector.value.source.disconnect();
+		speechDetector.value = null;
 	}
+
+	if (audioStream.value) {
+		audioStream.value.getTracks().forEach((track) => track.stop());
+		audioStream.value = null;
+	}
+
+	if (audioContext.value) {
+		await audioContext.value.close();
+		audioContext.value = null;
+	}
+
+	// Clean up ChatBot
+	chatbot.value = null;
+
+	// Clear audio queue
+	if (audioContext.value) {
+		const queueManager = new AudioQueueManager(audioContext.value);
+		queueManager.clear();
+	}
+
+	debugLog("Conversation ended");
 }
 
 export function VoiceChat() {
@@ -700,9 +989,9 @@ export function VoiceChat() {
 		}
 
 		return () => {
-			if (conversation.value) {
-				conversation.value.endSession();
-			}
+			// if (conversation.value) {
+			// 	conversation.value.endSession();
+			// }
 		};
 	}, []);
 
