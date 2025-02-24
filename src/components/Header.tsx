@@ -92,7 +92,7 @@ export function Header() {
 				<div className="text-sm text-gray-400 font-mono tabular-nums">
 					{formatTime(elapsedTime.value)}s
 				</div>
-				<button
+				{/* <button
 					onClick={toggleMockMode}
 					className={cn(
 						buttonStyles,
@@ -102,8 +102,10 @@ export function Header() {
 					)}
 				>
 					{isMockMode.value ? "Stop Mock" : "Start Mock"}
-				</button>
+				</button> */}
 			</div>
+
+			<h1 className="text-xl text-gray-200">Pitching: Greenroom</h1>
 
 			<button
 				onClick={() => (isDebugOpen.value = !isDebugOpen.value)}
