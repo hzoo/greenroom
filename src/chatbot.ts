@@ -8,6 +8,7 @@ import {
 	timelinePosition,
 	SYSTEM_SHAPE_IDS,
 	editor,
+	calculateShapeSize,
 } from "@/store/whiteboard";
 import { getColorForStatus } from "@/store/whiteboard";
 import { TONE_WORDS } from "./lib/tones";
@@ -295,7 +296,7 @@ export class ChatBot {
 	private toneDictionary = TONE_WORDS;
 	private task = "Teach the user, a non-technical person, how to use Obsidian";
 	private initialToneProgression = [
-		"blunt",
+		"analytical",
 		"enthusiastic",
 		"technical",
 		"casual",
@@ -575,9 +576,8 @@ export class ChatBot {
 								props: {
 									geo: "rectangle",
 									color: getColorForStatus(shape.status),
-									w: 100,
-									h: 50,
 									text: shape.text,
+									...calculateShapeSize(shape.text || ""),
 								},
 							},
 						]);
