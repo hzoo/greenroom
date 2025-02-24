@@ -446,7 +446,7 @@ export class ChatBot {
 			const pastShapes = currentShapes.filter(
 				(shape) =>
 					!SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId) &&
-					shape.x <= timelinePosition.value,
+					shape.x < timelinePosition.value,
 			);
 
 			// Calculate base positions for each tone in the progression
@@ -456,7 +456,7 @@ export class ChatBot {
 					const x = (tone.timing / this.durationMinutes) * timelineWidth.value;
 
 					// Only proceed if this tone is after the playhead
-					if (x <= timelinePosition.value) {
+					if (x < timelinePosition.value) {
 						// Find matching past shape if it exists
 						const pastShape = pastShapes.find(
 							(shape) => shape.text === tone.tone,
@@ -564,7 +564,7 @@ export class ChatBot {
 						);
 						// Remove from map to track which shapes were handled
 						existingShapesByTone.delete(shape.text);
-					} else if (!existingShape && shape.x > timelinePosition.value) {
+					} else if (!existingShape && shape.x >= timelinePosition.value) {
 						// Create new shape if it doesn't exist and is after playhead
 						editor.value?.createShapes([
 							{
