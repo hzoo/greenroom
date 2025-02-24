@@ -353,6 +353,9 @@ export function ActiveDocuments() {
 	}, []);
 
 	useEffect(() => {
+		const controller = new AbortController();
+		const { signal } = controller;
+
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.altKey && e.code === "KeyD") {
 				e.preventDefault();
@@ -360,11 +363,6 @@ export function ActiveDocuments() {
 			}
 		};
 
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, []);
-
-	useEffect(() => {
 		const handleMouseMove = (e: MouseEvent) => {
 			if (!dragRef.current?.dataset.dragging) return;
 
@@ -383,12 +381,11 @@ export function ActiveDocuments() {
 			document.body.style.cursor = "";
 		};
 
-		document.addEventListener("mousemove", handleMouseMove);
-		document.addEventListener("mouseup", handleMouseUp);
-		return () => {
-			document.removeEventListener("mousemove", handleMouseMove);
-			document.removeEventListener("mouseup", handleMouseUp);
-		};
+		window.addEventListener("keydown", handleKeyDown, { signal });
+		document.addEventListener("mousemove", handleMouseMove, { signal });
+		document.addEventListener("mouseup", handleMouseUp, { signal });
+
+		return () => controller.abort();
 	}, []);
 
 	const handleDragStart = (e: React.MouseEvent) => {

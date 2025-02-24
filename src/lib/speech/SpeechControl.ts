@@ -144,6 +144,7 @@ export class SpeechControl {
 
 		this.recognition = recognition;
 		this.recognition.start();
+		isUserSpeaking.value = true;
 	}
 
 	private handleRecognitionResult(event: Event) {
@@ -267,6 +268,7 @@ export class SpeechControl {
 			await this.initializeSpeechRecognition();
 		} else {
 			this.recognition.start();
+			isUserSpeaking.value = true;
 		}
 	}
 
@@ -358,7 +360,6 @@ export class SpeechControl {
 			};
 
 			let lastChunkProcessed = false;
-			let lastArrayBuffer: ArrayBuffer | null = null; // Store last array buffer
 
 			ws.onmessage = async (event) => {
 				const data = JSON.parse(event.data);
@@ -406,17 +407,6 @@ export class SpeechControl {
 						}
 					}
 
-					// debugLog(
-					// 	"Received audio chunk",
-					// 	{
-					// 		length: data.audio.length,
-					// 		isFinal: data.isFinal,
-					// 		hasAlignment: !!data.alignment,
-					// 		contextState: this.audioContext.state,
-					// 	},
-					// 	"synthesis",
-					// );
-
 					try {
 						const audioData = atob(data.audio);
 						const arrayBuffer = new ArrayBuffer(audioData.length);
@@ -425,23 +415,22 @@ export class SpeechControl {
 							view[i] = audioData.charCodeAt(i);
 						}
 
-						// Clone the buffer for later use if needed
-						lastArrayBuffer = arrayBuffer.slice(0);
-
 						// If this is the last chunk before WebSocket closes, attach completion handler
 						if (!lastChunkProcessed && data.isFinal) {
 							debugLog("Processing final chunk", null, "synthesis");
 							lastChunkProcessed = true;
+							// Set completion handler on the AudioQueueManager
+							if (this.audioQueue) {
+								this.audioQueue.onPlaybackComplete = completionHandler;
+							}
 							await this.audioQueue
 								?.addToQueue(
 									arrayBuffer,
 									data.normalizedAlignment || data.alignment,
-									completionHandler,
 								)
 								.catch(errorRecoveryHandler);
 							ws.close();
 						} else {
-							// debugLog("Processing non-final chunk", null, "synthesis");
 							await this.audioQueue
 								?.addToQueue(
 									arrayBuffer,
@@ -458,34 +447,18 @@ export class SpeechControl {
 
 			ws.onclose = async () => {
 				debugLog("WebSocket connection closed", null, "synthesis");
-				// If we haven't processed the last chunk yet and have the last array buffer
+				// If we haven't processed the last chunk yet, ensure completion handler is attached
 				if (
 					!lastChunkProcessed &&
-					lastArrayBuffer &&
 					this.audioQueue &&
 					this.audioContext?.state === "running"
 				) {
-					const currentQueueLength = audioChunks.value.length;
-					if (currentQueueLength > 0) {
-						debugLog(
-							"Attaching completion handler to final queued chunk",
-							null,
-							"synthesis",
-						);
-						const lastChunk = audioChunks.value[currentQueueLength - 1];
-						audioChunks.value = audioChunks.value.slice(0, -1);
-
-						// Reuse the stored array buffer
-						await this.audioQueue
-							.addToQueue(
-								new ArrayBuffer(),
-								lastChunk.alignment,
-								completionHandler,
-							)
-							.catch(errorRecoveryHandler);
-					} else {
-						errorRecoveryHandler();
-					}
+					debugLog(
+						"Setting completion handler on AudioQueueManager",
+						null,
+						"synthesis",
+					);
+					this.audioQueue.onPlaybackComplete = completionHandler;
 				}
 			};
 

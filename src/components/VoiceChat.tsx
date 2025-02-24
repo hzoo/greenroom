@@ -8,11 +8,10 @@ import {
 	wsAudioAnalyzer,
 } from "@/store/signals";
 
-export const AgentCircle = memo(function AgentCircle() {
+const FrequencyVisualizer = memo(function FrequencyVisualizer() {
 	useSignals();
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 
-	// Effect for frequency visualization
 	useSignalEffect(() => {
 		if (!canvasRef.current) return;
 
@@ -29,7 +28,6 @@ export const AgentCircle = memo(function AgentCircle() {
 		function drawFrequencies() {
 			if (!context) return;
 
-			// Get frequency data from appropriate analyzer
 			const freqData = new Uint8Array(256);
 			if (isAgentSpeaking.value && wsAudioAnalyzer.peek()) {
 				wsAudioAnalyzer.peek()?.getByteFrequencyData(freqData);
@@ -40,10 +38,8 @@ export const AgentCircle = memo(function AgentCircle() {
 				}
 			}
 
-			// Clear canvas
 			context.clearRect(0, 0, canvas.width, canvas.height);
 
-			// Draw frequency bars in a circle
 			const barCount = Math.min(64, freqData.length);
 			const barWidth = (2 * Math.PI) / barCount;
 
@@ -82,24 +78,38 @@ export const AgentCircle = memo(function AgentCircle() {
 	});
 
 	return (
+		<canvas
+			ref={canvasRef}
+			width={200}
+			height={200}
+			className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+		/>
+	);
+});
+
+function ColoredCircle() {
+	useSignals();
+
+	return (
+		<div
+			className={cn(
+				"h-32 w-32 rounded-full transition-all duration-300 relative",
+				isAgentSpeaking.value
+					? "bg-blue-500/20 scale-110 animate-pulse border-blue-400/30"
+					: isUserSpeaking.value
+						? "bg-green-500/20 scale-105 border-green-400/30"
+						: "bg-gray-600/20 border-gray-400/20",
+				"border-2",
+			)}
+		/>
+	);
+}
+
+export const AgentCircle = memo(function AgentCircle() {
+	return (
 		<div className="relative flex flex-col items-center">
-			<canvas
-				ref={canvasRef}
-				width={200}
-				height={200}
-				className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-			/>
-			<div
-				className={cn(
-					"h-32 w-32 rounded-full transition-all duration-300 relative",
-					isAgentSpeaking.value
-						? "bg-blue-500/20 scale-110 animate-pulse border-blue-400/30"
-						: isUserSpeaking.value
-							? "bg-green-500/20 scale-105 border-green-400/30"
-							: "bg-gray-600/20 border-gray-400/20",
-					"border-2",
-				)}
-			/>
+			<FrequencyVisualizer />
+			<ColoredCircle />
 		</div>
 	);
 });

@@ -14,7 +14,7 @@ const MIN_GAIN = 0.0001; // Minimum gain value for exponential ramps
 
 export class AudioQueueManager {
 	private ctx: AudioContext;
-	private onPlaybackComplete?: () => void;
+	public onPlaybackComplete?: () => void;
 	private gainNode: GainNode;
 	private analyzer: AnalyserNode;
 	private pendingChunks: AudioChunk[] = [];

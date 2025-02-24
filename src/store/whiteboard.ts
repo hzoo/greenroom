@@ -52,22 +52,16 @@ export const markShapeAsModified = (shapeId: TLShapeId) => {
 };
 
 // Clean up old modifications
-const cleanupModifications = () => {
-	const now = Date.now();
-	const newMap = new Map();
-	for (const [id, time] of modifiedShapes.value.entries()) {
-		if (now - time < MODIFICATION_COOLDOWN) {
-			newMap.set(id, time);
-		}
-	}
-	modifiedShapes.value = newMap;
-};
-
-// Cleanup effect
-effect(() => {
-	const intervalId = setInterval(cleanupModifications, MODIFICATION_COOLDOWN);
-	return () => clearInterval(intervalId);
-});
+// const cleanupModifications = () => {
+// 	const now = Date.now();
+// 	const newMap = new Map();
+// 	for (const [id, time] of modifiedShapes.value.entries()) {
+// 		if (now - time < MODIFICATION_COOLDOWN) {
+// 			newMap.set(id, time);
+// 		}
+// 	}
+// 	modifiedShapes.value = newMap;
+// };
 
 // computed
 export const progress = computed(
@@ -182,6 +176,8 @@ export const createToneShapes = (editorInstance: Editor) => {
 // Function to update whiteboard shapes from shapes.json
 export const updateWhiteboardShapes = async () => {
 	if (!editor.value) return;
+
+	console.log("Updating whiteboard shapes from shapes.json");
 
 	try {
 		const response = await fetch("/api/shapes");
@@ -303,16 +299,6 @@ export function getColorForStatus(status: string) {
 			return "light-violet";
 	}
 }
-
-// Effect to poll for changes to shapes.json
-effect(() => {
-	if (!editor.value) return;
-
-	const pollInterval = 1000; // Poll every second
-	const intervalId = setInterval(updateWhiteboardShapes, pollInterval);
-
-	return () => clearInterval(intervalId);
-});
 
 // Helper functions
 export const resetTimeline = () => {
@@ -484,6 +470,13 @@ export const setupEditorListeners = (editorInstance: Editor) => {
 	createTimelineBox();
 	createTimelineCursor();
 	createToneShapes(editorInstance);
+
+	// Set up polling for shape updates and cleanup
+	// const pollIntervalId = setInterval(updateWhiteboardShapes, 1000);
+	// const cleanupIntervalId = setInterval(
+	// 	cleanupModifications,
+	// 	MODIFICATION_COOLDOWN,
+	// );
 
 	// Listen for shape changes
 	editorInstance.on("change", (change) => {
