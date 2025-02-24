@@ -257,7 +257,7 @@ async function formatContext(context: Context): Promise<string> {
 ## Task
 Goal: ${context.task.goal}
 Duration: ${context.task.duration}min total
-Current time: ${context.task.elapsed}min elapsed (${((context.task.elapsed / context.task.duration) * 100).toFixed(1)}% complete)
+Current time: ${(context.task.elapsed).toFixed(2)}min elapsed (${((context.task.elapsed / context.task.duration) * 100).toFixed(1)}% complete)
 Progress: ${Math.round(context.task.progress * 100)}%
 
 ## Conversation History
@@ -307,10 +307,10 @@ export class ChatBot {
 	private task =
 		"Perfect our Visual AI Steering hackathon pitch through different presentation styles";
 	private initialToneProgression = [
-		"analytical",
+		"fantasy storytelling",
+		"casual",
 		"enthusiastic",
 		"technical",
-		"visionary",
 	];
 
 	constructor({ systemPrompt = SYSTEM_PROMPT, durationMinutes = 2 }) {
