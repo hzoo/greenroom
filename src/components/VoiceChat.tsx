@@ -2,23 +2,11 @@ import { signal } from "@preact/signals-react";
 import { memo, useRef } from "react";
 import { useSignalEffect, useSignals } from "@preact/signals-react/runtime";
 import { cn } from "@/lib/utils";
-import { isSpeaking, isUserSpeaking } from "@/store/signals";
+import { isAgentSpeaking, isUserSpeaking } from "@/store/signals";
 
-// Add at the top level with other signals
-export const audioContext = signal<AudioContext | null>(null);
-
-// Add these new signals at the top with other signals
-export const audioStream = signal<MediaStream | null>(null);
-export const speechDetector = signal<{
-	context: AudioContext;
-	analyzer: AnalyserNode;
-	source: MediaStreamAudioSourceNode;
-} | null>(null);
-
-// Add new signal for WebSocket audio analyzer
+export const speechDetector = signal<AnalyserNode | null>(null);
 export const wsAudioAnalyzer = signal<AnalyserNode | null>(null);
 
-// Export AgentCircle for reuse
 export const AgentCircle = memo(function AgentCircle() {
 	useSignals();
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,10 +30,26 @@ export const AgentCircle = memo(function AgentCircle() {
 
 			// Get frequency data from appropriate analyzer
 			const freqData = new Uint8Array(256);
-			if (isSpeaking.value && wsAudioAnalyzer.value) {
-				wsAudioAnalyzer.value.getByteFrequencyData(freqData);
-			} else if (isUserSpeaking.value && speechDetector.value?.analyzer) {
-				speechDetector.value.analyzer.getByteFrequencyData(freqData);
+			if (isAgentSpeaking.value && wsAudioAnalyzer.peek()) {
+				wsAudioAnalyzer.peek()?.getByteFrequencyData(freqData);
+			} else if (isUserSpeaking.value && speechDetector.peek()) {
+				const detector = speechDetector.peek();
+				if (detector) {
+					detector.getByteFrequencyData(freqData);
+					// Debug: Log frequency data when user is speaking
+					const max = Math.max(...freqData);
+					if (max > 0) {
+						// Log any non-zero data
+						console.log(
+							"User frequency data:",
+							Array.from(freqData.slice(0, 10))
+								.map((v) => v.toString().padStart(3))
+								.join(" "),
+							"Max:",
+							max,
+						);
+					}
+				}
 			}
 
 			// Clear canvas
@@ -69,7 +73,7 @@ export const AgentCircle = memo(function AgentCircle() {
 				context.beginPath();
 				context.moveTo(innerX, innerY);
 				context.lineTo(outerX, outerY);
-				context.strokeStyle = isSpeaking.value
+				context.strokeStyle = isAgentSpeaking.value
 					? `rgba(59, 130, 246, ${amplitude})`
 					: `rgba(34, 197, 94, ${amplitude})`;
 				context.lineWidth = 3;
@@ -100,7 +104,7 @@ export const AgentCircle = memo(function AgentCircle() {
 			<div
 				className={cn(
 					"h-32 w-32 rounded-full transition-all duration-300 relative",
-					isSpeaking.value
+					isAgentSpeaking.value
 						? "bg-blue-500/20 scale-110 animate-pulse border-blue-400/30"
 						: isUserSpeaking.value
 							? "bg-green-500/20 scale-105 border-green-400/30"

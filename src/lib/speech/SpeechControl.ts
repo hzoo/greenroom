@@ -11,12 +11,13 @@ import {
 	isConnected,
 	isUserSpeaking,
 	isListening,
-	isPaused,
 	transcript,
 	volume,
 	isAgentSpeaking,
+	hasSentFinalTranscript,
 } from "@/store/signals";
 import { debugLog } from "../debug";
+import { speechDetector } from "@/components/VoiceChat";
 
 // Default configuration
 const DEFAULT_CONFIG: Required<SpeechControlConfig> = {
@@ -49,6 +50,10 @@ export class SpeechControl {
 			state: this.audioContext.state,
 			sampleRate: this.audioContext.sampleRate,
 		});
+
+		window.addEventListener("unload", () => {
+			this.stop();
+		});
 	}
 
 	async requestMicrophonePermission(): Promise<boolean> {
@@ -79,6 +84,32 @@ export class SpeechControl {
 				throw new Error("Microphone permission not granted");
 			}
 			console.log("Microphone permission granted", hasPermission);
+
+			// Set up audio analyzer for visualization
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			debugLog("Got microphone stream", { active: stream.active }, "speech");
+
+			const source = this.audioContext.createMediaStreamSource(stream);
+			const analyzer = this.audioContext.createAnalyser();
+			analyzer.fftSize = 512;
+			analyzer.smoothingTimeConstant = 0.8;
+			source.connect(analyzer);
+
+			// Test the analyzer is receiving data
+			const testData = new Uint8Array(analyzer.frequencyBinCount);
+			analyzer.getByteFrequencyData(testData);
+			debugLog(
+				"Analyzer setup complete",
+				{
+					fftSize: analyzer.fftSize,
+					frequencyBinCount: analyzer.frequencyBinCount,
+					sampleRate: this.audioContext.sampleRate,
+					hasData: testData.some((val) => val > 0),
+				},
+				"speech",
+			);
+
+			speechDetector.value = analyzer;
 
 			// Initialize speech recognition
 			await this.initializeSpeechRecognition();
@@ -136,7 +167,12 @@ export class SpeechControl {
 		}
 
 		if (finalTranscript) {
-			debugLog("Final transcript received", { transcript: finalTranscript });
+			debugLog("[FINAL] transcript received", { transcript: finalTranscript });
+			if (!hasSentFinalTranscript.value) {
+				hasSentFinalTranscript.value = true;
+			} else {
+				return;
+			}
 			this.currentTranscript = finalTranscript;
 			batch(() => {
 				isUserSpeaking.value = false;
@@ -147,7 +183,7 @@ export class SpeechControl {
 			});
 			this.events.onTranscriptUpdate?.(finalTranscript, true);
 		} else if (interimTranscript) {
-			debugLog("Interim transcript update", { transcript: interimTranscript });
+			debugLog("INTERIM transcript update", { transcript: interimTranscript });
 			this.currentTranscript = interimTranscript;
 			isUserSpeaking.value = true;
 			this.events.onTranscriptUpdate?.(interimTranscript, false);
@@ -177,7 +213,7 @@ export class SpeechControl {
 			this.recognition?.start();
 		} else {
 			// isConnected.value = false;
-			this.handleError(new Error(`Speech recognition error: ${error.error}`));
+			// this.handleError(new Error(`Speech recognition error: ${error.error}`));
 		}
 	}
 
@@ -189,7 +225,7 @@ export class SpeechControl {
 		});
 
 		// Only auto-restart if we're still connected and agent isn't speaking
-		if (isConnected.value && !isAgentSpeaking.value && !isPaused.value) {
+		if (isConnected.value && !isAgentSpeaking.value) {
 			this.resumeRecognition();
 		}
 	}
@@ -201,8 +237,14 @@ export class SpeechControl {
 
 		this.silenceTimeout = setTimeout(() => {
 			if (isUserSpeaking.value) {
+				debugLog("Silence timeout, sending transcript", {
+					transcript: this.currentTranscript,
+				});
+				if (!hasSentFinalTranscript.value) {
+					hasSentFinalTranscript.value = true;
+					this.events.onTranscriptUpdate?.(this.currentTranscript, true);
+				}
 				isUserSpeaking.value = false;
-				this.events.onTranscriptUpdate?.(this.currentTranscript, true);
 			}
 		}, this.config.silenceDuration);
 	}
@@ -210,36 +252,35 @@ export class SpeechControl {
 	private pauseRecognition() {
 		if (this.recognition) {
 			debugLog("Aborting speech recognition while agent speaks");
-			// Use abort() instead of stop() to immediately end the session
-			this.recognition.abort();
-			// Clear the reference so a new instance will be created when we resume
-			this.recognition = null;
+			this.recognition.stop();
 		}
 	}
 
 	private async resumeRecognition() {
 		if (!isListening.value || isAgentSpeaking.value) return;
 
-		debugLog("Creating new speech recognition session");
-		const SpeechRecognition =
-			window.SpeechRecognition || window.webkitSpeechRecognition;
+		// Reset the final transcript flag when starting a new recognition session
+		hasSentFinalTranscript.value = false;
 
-		if (!SpeechRecognition) {
-			throw new Error("Speech recognition not supported");
+		debugLog("resuming speech recognition session");
+		if (!this.recognition) {
+			const SpeechRecognition =
+				window.SpeechRecognition || window.webkitSpeechRecognition;
+			if (!SpeechRecognition) {
+				throw new Error("Speech recognition not supported in this browser");
+			}
+			this.recognition = new SpeechRecognition();
 		}
+		this.recognition.continuous = true;
+		this.recognition.interimResults = true;
+		this.recognition.lang = this.config.language;
 
-		const recognition = new SpeechRecognition();
-		recognition.continuous = true;
-		recognition.interimResults = true;
-		recognition.lang = this.config.language;
+		this.recognition.onresult = this.handleRecognitionResult.bind(this);
+		this.recognition.onstart = this.handleRecognitionStart.bind(this);
+		this.recognition.onerror = this.handleRecognitionError.bind(this);
+		this.recognition.onend = this.handleRecognitionEnd.bind(this);
 
-		recognition.onresult = this.handleRecognitionResult.bind(this);
-		recognition.onstart = this.handleRecognitionStart.bind(this);
-		recognition.onerror = this.handleRecognitionError.bind(this);
-		recognition.onend = this.handleRecognitionEnd.bind(this);
-
-		this.recognition = recognition;
-		recognition.start();
+		this.recognition.start();
 	}
 
 	async speak(text: string) {
@@ -290,7 +331,6 @@ export class SpeechControl {
 					"error",
 				);
 				isAgentSpeaking.value = false;
-				// isSpeaking.value = false;
 				this.resumeRecognition();
 			}
 		};
@@ -304,7 +344,6 @@ export class SpeechControl {
 			completionHandler = () => {
 				debugLog("Audio playback completed, resuming recognition");
 				isAgentSpeaking.value = false;
-				// isSpeaking.value = false;
 				this.resumeRecognition();
 			};
 
@@ -332,6 +371,7 @@ export class SpeechControl {
 			};
 
 			let lastChunkProcessed = false;
+			let lastArrayBuffer: ArrayBuffer | null = null; // Store last array buffer
 
 			ws.onmessage = async (event) => {
 				const data = JSON.parse(event.data);
@@ -379,16 +419,16 @@ export class SpeechControl {
 						}
 					}
 
-					debugLog(
-						"Received audio chunk",
-						{
-							length: data.audio.length,
-							isFinal: data.isFinal,
-							hasAlignment: !!data.alignment,
-							contextState: this.audioContext.state,
-						},
-						"synthesis",
-					);
+					// debugLog(
+					// 	"Received audio chunk",
+					// 	{
+					// 		length: data.audio.length,
+					// 		isFinal: data.isFinal,
+					// 		hasAlignment: !!data.alignment,
+					// 		contextState: this.audioContext.state,
+					// 	},
+					// 	"synthesis",
+					// );
 
 					try {
 						const audioData = atob(data.audio);
@@ -397,6 +437,9 @@ export class SpeechControl {
 						for (let i = 0; i < audioData.length; i++) {
 							view[i] = audioData.charCodeAt(i);
 						}
+
+						// Clone the buffer for later use if needed
+						lastArrayBuffer = arrayBuffer.slice(0);
 
 						// If this is the last chunk before WebSocket closes, attach completion handler
 						if (!lastChunkProcessed && data.isFinal) {
@@ -410,7 +453,6 @@ export class SpeechControl {
 								.catch(errorRecoveryHandler);
 							ws.close();
 						} else {
-							// Process other chunks immediately without completion handler
 							await this.audioQueue
 								?.addToQueue(
 									arrayBuffer,
@@ -427,10 +469,10 @@ export class SpeechControl {
 
 			ws.onclose = async () => {
 				debugLog("WebSocket connection closed", null, "synthesis");
-				// If we haven't processed the last chunk yet (no isFinal flag received)
-				// and the context is still valid, attach completion handler to the last chunk
+				// If we haven't processed the last chunk yet and have the last array buffer
 				if (
 					!lastChunkProcessed &&
+					lastArrayBuffer &&
 					this.audioQueue &&
 					this.audioContext?.state === "running"
 				) {
@@ -441,20 +483,18 @@ export class SpeechControl {
 							null,
 							"synthesis",
 						);
-						// Get the raw audio data from the last chunk
 						const lastChunk = audioChunks.value[currentQueueLength - 1];
-						// Create an array buffer from the audio data
-						const audioData = new Float32Array(lastChunk.buffer.length);
-						lastChunk.buffer.copyFromChannel(audioData, 0);
-						const arrayBuffer = audioData.buffer;
-
-						// Remove the last chunk and re-add it with the completion handler
 						audioChunks.value = audioChunks.value.slice(0, -1);
+
+						// Reuse the stored array buffer
 						await this.audioQueue
-							.addToQueue(arrayBuffer, lastChunk.alignment, completionHandler)
+							.addToQueue(
+								lastArrayBuffer,
+								lastChunk.alignment,
+								completionHandler,
+							)
 							.catch(errorRecoveryHandler);
 					} else {
-						// If no chunks were processed successfully, recover
 						errorRecoveryHandler();
 					}
 				}
@@ -479,7 +519,6 @@ export class SpeechControl {
 	async stop() {
 		if (this.recognition) {
 			this.recognition.stop();
-			this.recognition = null;
 		}
 
 		if (this.silenceTimeout) {
@@ -489,15 +528,15 @@ export class SpeechControl {
 
 		if (this.audioContext) {
 			this.audioQueue?.clear();
-			await this.audioContext.close();
-			this.audioContext = new AudioContext();
 		}
 
 		batch(() => {
 			isConnected.value = false;
 			isListening.value = false;
 			isUserSpeaking.value = false;
-			// isSpeaking.value = false;
+			hasSentFinalTranscript.value = false;
+			// Keep the speechDetector connected for visualization
+			// speechDetector.value = null;
 		});
 	}
 
@@ -514,32 +553,5 @@ export class SpeechControl {
 					? "WebSocket error"
 					: "Unknown error";
 		this.handleError(new Error(errorMessage));
-	}
-
-	pause() {
-		isPaused.value = true;
-		if (this.recognition) {
-			this.recognition.stop();
-		}
-		if (this.audioContext?.state === "running") {
-			this.audioContext.suspend();
-			// Clear the audio queue when pausing
-			this.audioQueue?.clear();
-		}
-	}
-
-	resume() {
-		isPaused.value = false;
-		if (this.recognition) {
-			this.recognition.start();
-		}
-		if (this.audioContext?.state === "suspended") {
-			this.audioContext.resume().then(() => {
-				// Only recreate the audio queue after context is resumed
-				if (this.audioContext) {
-					this.audioQueue = new AudioQueueManager(this.audioContext);
-				}
-			});
-		}
 	}
 }

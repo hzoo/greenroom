@@ -17,16 +17,15 @@ import {
 } from "@/store/whiteboard";
 import {
 	volume,
-	isPaused,
 	isConnected,
-	isSpeaking,
 	isUserSpeaking,
 	chatbot,
+	isAgentSpeaking,
 } from "@/store/signals";
 import { cn } from "@/lib/utils";
 import { ChatPanel } from "@/components/ChatPanel";
 import ChatBot from "@/chatbot";
-import { initializeSpeechControl, speechControl } from "@/lib/voice/voiceSetup";
+import { speechControl } from "@/lib/voice/voiceSetup";
 import { batch } from "@preact/signals-react";
 
 // Constants
@@ -83,24 +82,6 @@ const getStatusStyle = (status: "past" | "current" | "future") => {
 
 const formatCoord = (n: number) => n.toFixed(0).padStart(4, " ");
 const formatPercent = (n: number) => (n * 100).toFixed(1).padStart(5, " ");
-
-// Separate the play status indicator for better performance
-const PlayStatus = memo(function PlayStatus() {
-	useSignals();
-	return (
-		<div className="flex items-center gap-1.5 min-w-[60px]">
-			<div
-				className={cn(
-					"w-1.5 h-1.5 rounded-full transition-colors",
-					!isPaused.value ? "bg-green-500" : "bg-gray-500",
-				)}
-			/>
-			<span className="text-gray-400">
-				{!isPaused.value ? "Playing" : "Paused"}
-			</span>
-		</div>
-	);
-});
 
 // Separate position display for better performance
 const PositionDisplay = memo(function PositionDisplay() {
@@ -198,7 +179,6 @@ const VoiceControls = memo(function VoiceControls() {
 			// Stop both conversation and timeline
 			batch(() => {
 				isConnected.value = false;
-				isPaused.value = true;
 				isPlaying.value = false;
 			});
 			speechControl.stop();
@@ -206,7 +186,6 @@ const VoiceControls = memo(function VoiceControls() {
 			// Start both conversation and timeline
 			batch(() => {
 				isConnected.value = true;
-				isPaused.value = false;
 				isPlaying.value = true;
 			});
 
@@ -221,7 +200,7 @@ const VoiceControls = memo(function VoiceControls() {
 				className={cn(
 					"px-2 py-0.5 rounded-full text-xs font-medium",
 					isConnected.value
-						? isSpeaking.value
+						? isAgentSpeaking.value
 							? "bg-blue-500/20 text-blue-200 border border-blue-500/30"
 							: isUserSpeaking.value
 								? "bg-green-500/20 text-green-200 border border-green-500/30"
@@ -230,7 +209,7 @@ const VoiceControls = memo(function VoiceControls() {
 				)}
 			>
 				{isConnected.value
-					? isSpeaking.value
+					? isAgentSpeaking.value
 						? "Agent Speaking"
 						: isUserSpeaking.value
 							? "You're Speaking"
@@ -271,21 +250,6 @@ const VoiceControls = memo(function VoiceControls() {
 					</div>
 				</div>
 			)}
-
-			{/* Play/Pause button - only show when connected */}
-			{isConnected.value && (
-				<button
-					onClick={() => (isPaused.value = !isPaused.value)}
-					className={cn(
-						"px-2 py-1 rounded text-xs font-medium border",
-						!isPaused.value
-							? "bg-red-500/20 text-red-200 border-red-500/30 hover:bg-red-500/30"
-							: "bg-green-500/20 text-green-200 border-green-500/30 hover:bg-green-500/30",
-					)}
-				>
-					{!isPaused.value ? "Pause" : "Play"}
-				</button>
-			)}
 		</div>
 	);
 });
@@ -304,7 +268,6 @@ const DebugHeader = memo(function DebugHeader({
 				<div className="flex items-center gap-3">
 					<div className="flex items-center gap-2 text-xs">
 						<div className="font-medium text-gray-200">Debug</div>
-						<PlayStatus />
 					</div>
 					<StatsDisplay
 						totalShapes={shapes.length}
@@ -379,8 +342,6 @@ export function ActiveDocuments() {
 			});
 			await bot.initialize();
 			chatbot.value = bot;
-			// Initialize voice control after chatbot is ready
-			await initializeSpeechControl();
 		};
 
 		initializeChatbot();

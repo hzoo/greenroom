@@ -59,18 +59,53 @@ export const isTranscriptOpen = signal(true);
 export const transcriptWidth = createPersistedSignal("transcript-width", 320);
 export const isAgentSpeaking = signal(false);
 export const isUserSpeaking = signal(false);
-export const isSpeaking = computed(
-	() => isAgentSpeaking.value || isUserSpeaking.value,
-);
 export const isConnected = signal(false);
 export const isListening = signal(false);
+export const hasSentFinalTranscript = signal(false);
 
 // Voice chat controls
 export const volume = signal(1);
-export const isPaused = signal(true);
 
 // Chatbot state
 export const chatbot = signal<ChatBot | null>(null);
 
 // Latest context signal
 export const latestContext = signal<string>("");
+
+// Mock voice chat state
+export const isMockMode = signal(false);
+export const mockMessages = signal<Array<{ message: string; source: Role }>>([
+	{ message: "Hi there! How can I help you today?", source: "ai" },
+	{ message: "Can you help me understand how this works?", source: "user" },
+	{
+		message:
+			"Of course! This is a voice chat interface that lets you interact with an AI assistant. You can speak naturally and I'll respond accordingly.",
+		source: "ai",
+	},
+	{
+		message:
+			"You can also ask me to perform actions like creating notes, searching your files, or even controlling your Obsidian vault. Just let me know what you need!",
+		source: "ai",
+	},
+	{
+		message: "What is the weather in Tokyo?",
+		source: "user",
+	},
+	{
+		message: "The weather in Tokyo is sunny and warm today.",
+		source: "ai",
+	},
+	{
+		message: "What is the weather in NYC?",
+		source: "user",
+	},
+	{
+		message: "The weather in NYC is sunny and warm today.",
+		source: "ai",
+	},
+	{
+		message: "What is the weather in Tokyo?",
+		source: "user",
+	},
+]);
+export const currentMockIndex = signal(-1);
