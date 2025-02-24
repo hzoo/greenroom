@@ -1,10 +1,6 @@
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, memo } from "react";
-import {
-	chatHistory,
-	debugPanelHeight,
-	isChatLoading,
-} from "@/store/whiteboard";
+import { chatHistory, isChatLoading } from "@/store/whiteboard";
 import { cn } from "@/lib/utils";
 import { AgentCircle } from "./VoiceChat";
 import {
@@ -41,15 +37,13 @@ const TranscriptMessage = memo(function TranscriptMessage({
 // New VoiceTranscript component
 const VoiceTranscript = memo(function VoiceTranscript() {
 	useSignals();
-	const scrollRef = useRef<HTMLDivElement>(null);
 	const dragRef = useRef<HTMLDivElement>(null);
+	const messagesEndRef = useRef<HTMLDivElement>(null);
 
 	// Auto-scroll to bottom when new messages arrive
 	useEffect(() => {
-		if (scrollRef.current) {
-			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-		}
-	});
+		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, [transcript.value.length]);
 
 	// Dragging logic
 	const handleDragStart = (e: React.MouseEvent) => {
@@ -76,7 +70,7 @@ const VoiceTranscript = memo(function VoiceTranscript() {
 
 	return (
 		<div
-			className="relative border-l border-gray-700/50 bg-gray-800/30 backdrop-blur-sm overflow-hidden"
+			className="relative border-l border-gray-700/50 bg-gray-800/30 backdrop-blur-sm flex flex-col h-full"
 			style={{ width: transcriptWidth.value }}
 		>
 			{/* Drag handle */}
@@ -88,20 +82,21 @@ const VoiceTranscript = memo(function VoiceTranscript() {
 				<div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gray-700/50 group-hover:bg-blue-500/50" />
 			</div>
 
-			{/* Content */}
-			<div className="flex flex-col h-full">
-				<div className="p-4">
-					<AgentCircle />
-				</div>
-				<div ref={scrollRef} className="flex-1 p-4 space-y-4 overflow-y-auto">
-					{transcript.value.map((msg, i) => (
-						<TranscriptMessage
-							key={`${msg.source}-${msg.message}-${i}`}
-							message={msg.message}
-							source={msg.source}
-						/>
-					))}
-				</div>
+			{/* Header */}
+			<div className="flex-none p-4 border-b border-gray-700/50">
+				<AgentCircle />
+			</div>
+
+			{/* Messages container */}
+			<div className="flex-1 overflow-y-auto p-4 space-y-2">
+				{transcript.value.map((msg, i) => (
+					<TranscriptMessage
+						key={`${msg.source}-${msg.message}-${i}`}
+						message={msg.message}
+						source={msg.source}
+					/>
+				))}
+				<div ref={messagesEndRef} />
 			</div>
 		</div>
 	);
@@ -154,7 +149,6 @@ function formatContent(content: string) {
 
 export function ChatPanel() {
 	useSignals();
-	const chatContainerRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		// Load history and get initial context if chatbot exists
@@ -168,8 +162,9 @@ export function ChatPanel() {
 	}, []);
 
 	return (
-		<div className="flex flex-col h-full border-l border-gray-700/50 bg-gray-950">
-			<div className="flex items-center justify-between px-3 h-9 border-b border-gray-700/50 bg-gray-900">
+		<div className="flex flex-col h-full">
+			{/* Header row */}
+			<div className="flex-none h-9 border-b border-gray-700/50 bg-gray-900 px-3 flex items-center justify-between">
 				<div className="text-xs font-medium text-gray-200">Context View</div>
 				<div className="flex items-center gap-2">
 					{isChatLoading.value && (
@@ -180,17 +175,13 @@ export function ChatPanel() {
 				</div>
 			</div>
 
-			<div className="flex flex-1">
-				<div
-					ref={chatContainerRef}
-					className="flex-1 overflow-auto p-3 space-y-4 font-mono"
-					style={{
-						maxHeight: `${debugPanelHeight.value - 150}px`,
-						overflowY: "auto",
-					}}
-				>
+			{/* Content row with two columns */}
+			<div className="flex-1 flex min-h-0">
+				{/* Context column */}
+				<div className="flex-1 overflow-y-auto p-4 border-r border-gray-700/50 bg-gray-950">
 					{formatContent(latestContext.value)}
 				</div>
+				{/* Transcript column */}
 				<VoiceTranscript />
 			</div>
 		</div>
