@@ -210,7 +210,7 @@ export class SpeechControl {
 			"error",
 		);
 		if (error.error === "no-speech") {
-			this.recognition?.start();
+			// this.recognition?.start();
 		} else {
 			// isConnected.value = false;
 			// this.handleError(new Error(`Speech recognition error: ${error.error}`));
