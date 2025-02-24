@@ -478,7 +478,7 @@ export class SpeechControl {
 						// Reuse the stored array buffer
 						await this.audioQueue
 							.addToQueue(
-								lastArrayBuffer,
+								new ArrayBuffer(),
 								lastChunk.alignment,
 								completionHandler,
 							)
@@ -517,6 +517,8 @@ export class SpeechControl {
 
 		if (this.audioContext) {
 			this.audioQueue?.clear();
+			// Suspend but don't close the context since we might reuse it
+			await this.audioContext.suspend();
 		}
 
 		batch(() => {
