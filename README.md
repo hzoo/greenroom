@@ -97,3 +97,18 @@ Our hackathon demo shows extreme personality transitions in a pitch feedback ses
 - Integration with additional AI models
 
 The future of Greenroom is about more than just tone control - it's about creating a comprehensive system for managing AI conversations with full context awareness and real-time adaptability.
+
+## Setup
+```sh
+# .env file
+echo "VITE_OPENAI_API_KEY=KEY" >> .env
+echo "VITE_ELEVEN_LABS_API_KEY=KEY" >> .env
+echo "XI_API_KEY=KEY" >> .env
+
+```sh
+bun install
+# backend
+bun run server
+# frontend
+bun run dev
+```
