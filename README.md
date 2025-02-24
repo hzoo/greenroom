@@ -30,14 +30,15 @@ Our system introduces:
 - Web Speech API for automatic speech recognition
 - ElevenLabs for voice synthesis
 - OpenAI for agentic steering of conversation flow
+- Vercel AI SDK for structured output extraction, i.e. tone plan, response content, intent strategy
 
 ## Key Technical Innovations
 
 ### 1. Real-time Agent Architecture: The Brain Behind the Magic
-We threw out the traditional chatbot playbook and built our own agent system from scratch. Why? Because real-time control requires a fundamentally different architecture:
+We threw out the traditional chatbot playbook and built our own agent system from scratch. The ElevenLabs Conversational AI product does not support changing AI agent behavior in real-time, so we built a whiteboard interface to adjust the agent personality over the course of the conversation. This features:
 - Predictive tone state management that can smoothly transition between emotional states
 - Dynamic behavior adjustment that responds to timeline position like a musician following a conductor
-- Lightning-fast state propagation that makes the system feel alive and responsive)
+- Lightning-fast state propagation that makes the system feel alive and responsive
 
 ### 2. Advanced Audio Streaming: Making AI Voice Feel Human
 Voice interaction isn't just about text-to-speech - it's about creating a seamless, natural experience. We solved several critical challenges:
