@@ -1,190 +1,98 @@
-# Greenroom: Dynamic AI Conversation Control System
+# Greenroom
 
-A system for real-time control and visualization of AI conversations.
+Shape the behind-the-scenes flow of AI conversations in real-time with a whiteboard.
 
-## Debug Tools
+## The Problem: Breaking Free from AI's Personality Prison
 
-### CLI Chatbot
+Imagine trying to have a natural conversation with someone who can only speak in one tone, or worse, someone whose personality you can only set once at the beginning of the conversation. That's the current state of AI conversation systems - they're either completely scripted or completely autonomous, with no middle ground. This binary approach creates a fundamental disconnect in real-world applications where conversations need to flow naturally while maintaining purposeful direction.
 
-A debugging tool to help visualize conversation planning and tone progression. Shows how the AI plans responses and manages conversation flow.
+Current limitations force developers to choose between:
+- Complete control through rigid prompting, sacrificing natural flow
+- Full AI autonomy, losing the ability to guide the conversation
+- Static personality settings that can't adapt to changing contexts
+- One-size-fits-all approaches that break down in group settings
 
-```bash
-# Run the debug chatbot
-bun chat
-```
+## Our Solution: The Visual Programming Revolution for AI Conversations
 
-Example output:
-```
->> hey there
+We've built something with more visual control over AI conversations. Instead of treating AI conversation as a simple input/output system, the interface helps you shape AI personality and conversation flow in real-time - like a DJ mixing tracks, but for AI behavior.
 
-=== Current Context ===
-## Task
-Goal: Teach the user, a non-technical person, how to use Obsidian
-Progress: 0%
+For our hackathon demo, we're showcasing this through an AI pitch coach that provides feedback on our "Visual AI Steering" pitch while demonstrating dramatic personality shifts. This extreme example highlights the system's ability to maintain coherent feedback while transitioning between wildly different emotional states - from analytical robot to passionate cheerleader - all under your real-time control.
 
-## Conversation History
-user: hey there
+Our system introduces:
+- **Visual Timeline Control**: A drag-and-drop interface that turns conversation planning into an intuitive visual experience
+- **Real-time Tone Steering**: Dynamic control over AI personality that feels like conducting an orchestra of emotions
+- **Collaborative Whiteboard**: A shared workspace where multiple stakeholders can shape conversation flow together
+- **Live Voice Integration**: Seamless voice interaction that responds instantly to your steering
 
-## Tone Progression
-Current tones:
-[2025-02-22T17:53:16.044Z] professional
+## Tech Stack
 
-Planned progression:
-- professional (Trigger: current stage)
-- friendly (Trigger: natural progression)
-- collaborative (Trigger: natural progression)
-- instructive (Trigger: natural progression)
+- TLDraw for the whiteboard
+- Web Speech API for automatic speech recognition
+- ElevenLabs for voice synthesis
+- OpenAI for agentic steering of conversation flow
 
-=== AI Response Object ===
-{
-  "tone": {
-    "current": "professional",
-    "next": "friendly",
-    "progress": "early"
-  },
-  "response": {
-    "content": "Hello! How can I assist you...",
-    "intent": "Establish professional rapport..."
-  }
-}
-```
+## Key Technical Innovations
 
-The debug output shows:
-- Current conversation context
-- Planned tone progression
-- AI's reasoning and intent
-- Response formatting
+### 1. Real-time Agent Architecture: The Brain Behind the Magic
+We threw out the traditional chatbot playbook and built our own agent system from scratch. Why? Because real-time control requires a fundamentally different architecture:
+- Predictive tone state management that can smoothly transition between emotional states
+- Dynamic behavior adjustment that responds to timeline position like a musician following a conductor
+- Lightning-fast state propagation that makes the system feel alive and responsive)
 
-Commands:
-- `exit`: Quit
-- `history`: Show history
-- `Ctrl+C`: Interrupt
+### 2. Advanced Audio Streaming: Making AI Voice Feel Human
+Voice interaction isn't just about text-to-speech - it's about creating a seamless, natural experience. We solved several critical challenges:
+- Smart buffering that predicts and pre-loads the next audio chunk like a DJ queuing the next track
+- Microsecond-precise crossfading that eliminates the robotic gaps in speech
+- Web Audio API orchestration that keeps everything in perfect time
+- Voice modulation that matches the AI's current emotional state
 
-## Development
+### 3. Visual Programming Interface: Conversation as Code
+We've transformed abstract conversation design into a visual programming language:
+- Timeline-based execution that lets you see and shape the future of the conversation
+- Spatial arrangement that turns position into meaning
+- Real-time flow modification that feels like live coding
+- Visual debugging that makes conversation state tangible
 
-```bash
-# Install dependencies
-bun install
+## Use Cases: Real-world Impact
 
-# Set up OpenAI key
-echo "OPENAI_API_KEY=your_key_here" > .env
-```
+1. **Professional Consulting**: Transform client interactions
+   - Perfect your pitch through real-time personality adjustment
+   - Practice client presentations with instant feedback
+   - Optimize sales conversations on the fly
 
-## Features
+2. **Educational Applications**: Revolutionize teaching
+   - Create learning paths that adapt to student engagement
+   - Adjust teaching style based on comprehension
+   - Deliver content at the perfect pace
 
-- Real-time conversation planning with emotional tone progression
-- Task-oriented dialogue management
-- Detailed context tracking
-- Color-coded terminal output
-- Conversation history persistence
-- Debug output showing AI's reasoning
+3. **Therapeutic Conversations**: Enable better care
+   - Track emotional progression visually
+   - Control tone transitions with precision
+   - Adjust therapy approach in real-time
 
-## Installation
+4. **Group Facilitation**: Enhance collaboration
+   - Steer discussions with surgical precision
+   - Manage multiple conversation threads
+   - Adapt facilitation style to group dynamics
 
-```bash
-# Install dependencies
-bun install
+## Future Development: Beyond the Demo
 
-# Set up your OpenAI API key
-echo "OPENAI_API_KEY=your_key_here" > .env
+Our hackathon demo shows extreme personality transitions in a pitch feedback session, but this is just the beginning. Our roadmap includes:
 
-# Start the chat
-bun chat
-```
+### Dynamic Context Integration
+- **Model Context Protocol (MCP)**: A sophisticated system for feeding dynamic context to the AI in real-time
+- **Document Vault Integration**: CLI tool for instantiating conversations from Markdown document collections
 
-## How It Works
+### Enhanced Interaction Models
+- Document upload interface for instant context creation
+- Real-time document reference during conversations
+- Multi-document context synthesis
+- Collaborative document annotation
 
-The chatbot uses a strategic conversation planner powered by GPT-4 to:
-1. Track conversation progress
-2. Manage emotional tone progression
-3. Guide the conversation toward a specific goal
-4. Adapt responses based on context
+### Platform Evolution
+- Enhanced group collaboration features
+- Advanced voice modulation controls
+- Expanded use case templates
+- Integration with additional AI models
 
-### Conversation Structure
-
-Each turn of conversation includes:
-- Task goal and progress
-- Conversation history
-- Tone progression history
-- Planned tone stages
-
-### Color Coding
-
-- 🔵 Blue: Debug section headers
-- 🟢 Green: Bot messages
-- 🟣 Red: User messages
-- 🟡 Yellow: Input prompt
-- ⚪ Dim: System messages and debug content
-
-### Commands
-
-- `exit`: Quit the chat
-- `history`: Show conversation history
-- `Ctrl+C`: Interrupt and exit
-
-## Technical Details
-
-### Tone Progression
-
-The chatbot manages a planned progression of tones:
-```typescript
-[
-  "professional",
-  "friendly",
-  "collaborative",
-  "instructive"
-]
-```
-
-### Context Management
-
-Each turn maintains:
-```typescript
-type Context = {
-  conversationHistory: ChatMessage[];
-  toneHistory: {
-    tone: string;
-    timestamp: number;
-  }[];
-  task: {
-    goal: string;
-    progress: number; // 0-1
-  };
-  nextTonePlan: {
-    tone: string;
-    trigger: string;
-  }[];
-};
-```
-
-### Response Schema
-
-AI responses follow this structure:
-```typescript
-{
-  tone: {
-    current: string;
-    next: string;
-    progress: "early" | "middle" | "late";
-  },
-  response: {
-    content: string;
-    intent: string;
-  }
-}
-```
-
-## Future Improvements
-
-- Voice conversation support
-- Web UI integration
-- Document-based context
-- Multi-user support
-- Custom tone progressions
-
-
-## Screenshots
-
-![screenshot](screenshots/CleanShot%202025-02-22%20at%2014.21.55.png)
-
-![screenshot](screenshots/CleanShot%202025-02-22%20at%2014.38.22.gif)
+The future of Greenroom is about more than just tone control - it's about creating a comprehensive system for managing AI conversations with full context awareness and real-time adaptability.
