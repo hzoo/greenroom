@@ -87,6 +87,7 @@ export function TldrawWrapper() {
 							...shape.props,
 							text: unusedTone,
 							color: getColorForStatus("future"),
+							font: "mono",
 						},
 					};
 				}

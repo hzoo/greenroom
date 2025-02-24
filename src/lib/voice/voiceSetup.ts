@@ -1,53 +1,58 @@
-import { effect } from "@preact/signals-react";
 import { SpeechControl } from "@/lib/speech/SpeechControl";
-import { isConnected, isPaused, chatbot, transcript } from "@/store/signals";
+import { chatbot, transcript } from "@/store/signals";
 import { debugLog } from "@/lib/debug";
 
-// Create a signal for the speech control instance
-export const speechControl = new SpeechControl(
-	{
-		elevenlabsApiKey: import.meta.env.VITE_ELEVENLABS_API_KEY,
-	},
-	{
-		onTranscriptUpdate: async (transcriptText: string, isFinal: boolean) => {
-			debugLog("Transcript update:", { transcriptText, isFinal }, "speech");
-			if (isFinal && chatbot.value) {
-				debugLog("Processing final transcript with chatbot", null, "speech");
-				const response = await chatbot.value.handleVoiceTranscript(
-					transcriptText,
-					"user",
-				);
-				if (response) {
-					debugLog("Got chatbot response:", response, "speech");
-					// Only add AI response since user message was already added
-					transcript.value = transcript.value.concat([
-						{ message: response.response.content, source: "ai" },
-					]);
-					// Speak response
-					await speechControl.speak(response.response.content);
-				}
-			}
-		},
-	},
-);
+// Singleton instance
+let instance: SpeechControl | null = null;
 
-// Initialize speech control
-export async function initializeSpeechControl() {
-	// Set up cleanup on window unload
-	window.addEventListener("unload", () => {
-		speechControl.stop();
-	});
+// Function to get or create the speech control instance
+function getSpeechControl(): SpeechControl {
+	if (!instance) {
+		instance = new SpeechControl(
+			{
+				elevenlabsApiKey: import.meta.env.VITE_ELEVENLABS_API_KEY,
+			},
+			{
+				onTranscriptUpdate: async (
+					transcriptText: string,
+					isFinal: boolean,
+				) => {
+					// debugLog("Transcript update:", { transcriptText, isFinal }, "speech");
+					if (isFinal && chatbot.value) {
+						debugLog(
+							"Processing final transcript with chatbot",
+							null,
+							"speech",
+						);
+						const response = await chatbot.value.handleVoiceTranscript(
+							transcriptText,
+							"user",
+						);
+						if (response) {
+							debugLog("Got chatbot response:", response, "speech");
+							// Only add AI response since user message was already added
+							transcript.value = transcript.value.concat([
+								{ message: response.response.content, source: "ai" },
+							]);
+							// Speak response
+							await instance?.speak(response.response.content);
+						}
+					}
+				},
+			},
+		);
 
-	// Effect for play state only
-	effect(() => {
-		if (!isConnected.peek()) return;
-
-		if (!isPaused.value) {
-			debugLog("Resuming speech control...", null, "speech");
-			speechControl.resume();
-		} else {
-			debugLog("Pausing speech control...", null, "speech");
-			speechControl.pause();
+		// Handle hot module replacement
+		if (import.meta.hot) {
+			import.meta.hot.dispose(() => {
+				// Cleanup the instance when the module is disposed
+				instance?.stop();
+				instance = null;
+			});
 		}
-	});
+	}
+	return instance;
 }
+
+// Export the singleton instance getter
+export const speechControl = getSpeechControl();

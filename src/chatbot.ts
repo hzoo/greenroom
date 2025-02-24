@@ -8,6 +8,7 @@ import {
 	timelinePosition,
 	SYSTEM_SHAPE_IDS,
 	editor,
+	calculateShapeSize,
 } from "@/store/whiteboard";
 import { getColorForStatus } from "@/store/whiteboard";
 import { TONE_WORDS } from "./lib/tones";
@@ -30,6 +31,25 @@ interface ChatMessage {
 	content: string;
 	timestamp: number;
 }
+
+// Add new type definitions for message content
+type MessageContent = string | z.infer<typeof TONE_SCHEMA>;
+
+interface BaseMessage {
+	timestamp: number;
+}
+
+interface SimpleMessage extends BaseMessage {
+	role: "user" | "system";
+	content: string;
+}
+
+interface AssistantMessage extends BaseMessage {
+	role: "assistant";
+	content: z.infer<typeof TONE_SCHEMA>;
+}
+
+type TypedChatMessage = SimpleMessage | AssistantMessage;
 
 // Check for OpenAI API key in Vite environment variables
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
@@ -118,7 +138,7 @@ Remember:
 Output format:
 {
   "tone": {
-    "current": "current pitch style",
+    "current": "current emotional tone based on planned progression",
     "progression": [
       {
         "tone": "tone name",
@@ -288,7 +308,7 @@ export class ChatBot {
 		"Perfect our Visual AI Steering hackathon pitch through different presentation styles";
 	private initialToneProgression = [
 		"analytical",
-		"storytelling",
+		"enthusiastic",
 		"technical",
 		"visionary",
 	];
@@ -312,20 +332,49 @@ export class ChatBot {
 	}
 
 	public async addMessage(
-		role: "user" | "assistant" | "system",
-		content: string,
+		role: TypedChatMessage["role"],
+		content: MessageContent,
 	) {
-		const message: ChatMessage = {
-			role,
-			content,
-			timestamp: Date.now(),
+		// Type guard to check if content is TONE_SCHEMA
+		const isToneSchema = (
+			content: MessageContent,
+		): content is z.infer<typeof TONE_SCHEMA> => {
+			return (
+				typeof content === "object" &&
+				content !== null &&
+				"tone" in content &&
+				"response" in content
+			);
 		};
-		this.history.push(message);
+
+		// Create the base message
+		const message: TypedChatMessage =
+			role === "assistant"
+				? {
+						role: "assistant",
+						content: content as z.infer<typeof TONE_SCHEMA>,
+						timestamp: Date.now(),
+					}
+				: {
+						role: role as "user" | "system",
+						content: content as string,
+						timestamp: Date.now(),
+					};
+
+		// Add to history as string content
+		this.history.push({
+			role,
+			content: isToneSchema(content)
+				? content.response.content
+				: (content as string),
+			timestamp: message.timestamp,
+		});
 
 		// Update tone history for assistant messages
-		if (role === "assistant") {
+		if (role === "assistant" && isToneSchema(content)) {
 			try {
-				const parsed = TONE_SCHEMA.parse(JSON.parse(content));
+				console.log("🎭 Parsing tone schema:", content);
+				const parsed = content;
 				this.toneHistory.push({
 					tone: parsed.tone.current,
 					timestamp: message.timestamp,
@@ -358,6 +407,7 @@ export class ChatBot {
 					this.currentToneIndex++;
 				}
 			} catch (error) {
+				console.error("ERROR parsing tone schema:", error);
 				// If message isn't in the expected format, maintain current tone
 				this.toneHistory.push({
 					tone: this.initialToneProgression[this.currentToneIndex],
@@ -408,7 +458,7 @@ export class ChatBot {
 			const pastShapes = currentShapes.filter(
 				(shape) =>
 					!SYSTEM_SHAPE_IDS.includes(shape.id as TLShapeId) &&
-					shape.x <= timelinePosition.value,
+					shape.x < timelinePosition.value,
 			);
 
 			// Calculate base positions for each tone in the progression
@@ -418,7 +468,7 @@ export class ChatBot {
 					const x = (tone.timing / this.durationMinutes) * timelineWidth.value;
 
 					// Only proceed if this tone is after the playhead
-					if (x <= timelinePosition.value) {
+					if (x < timelinePosition.value) {
 						// Find matching past shape if it exists
 						const pastShape = pastShapes.find(
 							(shape) => shape.text === tone.tone,
@@ -526,7 +576,7 @@ export class ChatBot {
 						);
 						// Remove from map to track which shapes were handled
 						existingShapesByTone.delete(shape.text);
-					} else if (!existingShape && shape.x > timelinePosition.value) {
+					} else if (!existingShape && shape.x >= timelinePosition.value) {
 						// Create new shape if it doesn't exist and is after playhead
 						editor.value?.createShapes([
 							{
@@ -537,9 +587,8 @@ export class ChatBot {
 								props: {
 									geo: "rectangle",
 									color: getColorForStatus(shape.status),
-									w: 100,
-									h: 50,
 									text: shape.text,
+									...calculateShapeSize(shape.text || ""),
 								},
 							},
 						]);
@@ -579,6 +628,8 @@ export class ChatBot {
 		z.infer<typeof TONE_SCHEMA> | undefined
 	> {
 		const messages = await this.formatMessagesForAI();
+
+		console.log("💬 Sending messages to AI:", messages);
 
 		// First, add the formatted context as a system message to show what we're sending to the AI
 		await this.addMessage("system", messages[1].content);
@@ -753,10 +804,7 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 		};
 
 		// Add the initial response to history
-		await this.addMessage(
-			"assistant",
-			JSON.stringify(initialResponse.response.content),
-		);
+		await this.addMessage("assistant", initialResponse);
 
 		// Update whiteboard with initial shapes
 		await this.updateWhiteboardShapes(initialResponse);
@@ -778,7 +826,7 @@ Current tone: ${this.initialToneProgression[this.currentToneIndex]}
 			const response = await this.getAIResponse();
 			if (response) {
 				this.lastVoiceResponse = response;
-				await this.addMessage("assistant", response.response.content);
+				await this.addMessage("assistant", response);
 			}
 			return response;
 		}
