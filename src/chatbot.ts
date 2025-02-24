@@ -309,7 +309,7 @@ export class ChatBot {
 	private task =
 		"Perfect our Visual AI Steering hackathon pitch through different presentation styles";
 	private initialToneProgression = [
-		"fantasy storytelling",
+		"analytical",
 		"casual",
 		"enthusiastic",
 		"technical",
