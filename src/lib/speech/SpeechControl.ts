@@ -15,9 +15,9 @@ import {
 	volume,
 	isAgentSpeaking,
 	hasSentFinalTranscript,
+	speechDetector,
 } from "@/store/signals";
 import { debugLog } from "../debug";
-import { speechDetector } from "@/components/VoiceChat";
 
 // Default configuration
 const DEFAULT_CONFIG: Required<SpeechControlConfig> = {
@@ -183,7 +183,7 @@ export class SpeechControl {
 			});
 			this.events.onTranscriptUpdate?.(finalTranscript, true);
 		} else if (interimTranscript) {
-			debugLog("INTERIM transcript update", { transcript: interimTranscript });
+			// debugLog("INTERIM transcript update", { transcript: interimTranscript });
 			this.currentTranscript = interimTranscript;
 			isUserSpeaking.value = true;
 			this.events.onTranscriptUpdate?.(interimTranscript, false);
@@ -240,11 +240,11 @@ export class SpeechControl {
 				debugLog("Silence timeout, sending transcript", {
 					transcript: this.currentTranscript,
 				});
+				isUserSpeaking.value = false;
 				if (!hasSentFinalTranscript.value) {
 					hasSentFinalTranscript.value = true;
 					this.events.onTranscriptUpdate?.(this.currentTranscript, true);
 				}
-				isUserSpeaking.value = false;
 			}
 		}, this.config.silenceDuration);
 	}
@@ -264,23 +264,10 @@ export class SpeechControl {
 
 		debugLog("resuming speech recognition session");
 		if (!this.recognition) {
-			const SpeechRecognition =
-				window.SpeechRecognition || window.webkitSpeechRecognition;
-			if (!SpeechRecognition) {
-				throw new Error("Speech recognition not supported in this browser");
-			}
-			this.recognition = new SpeechRecognition();
+			await this.initializeSpeechRecognition();
+		} else {
+			this.recognition.start();
 		}
-		this.recognition.continuous = true;
-		this.recognition.interimResults = true;
-		this.recognition.lang = this.config.language;
-
-		this.recognition.onresult = this.handleRecognitionResult.bind(this);
-		this.recognition.onstart = this.handleRecognitionStart.bind(this);
-		this.recognition.onerror = this.handleRecognitionError.bind(this);
-		this.recognition.onend = this.handleRecognitionEnd.bind(this);
-
-		this.recognition.start();
 	}
 
 	async speak(text: string) {
@@ -443,6 +430,7 @@ export class SpeechControl {
 
 						// If this is the last chunk before WebSocket closes, attach completion handler
 						if (!lastChunkProcessed && data.isFinal) {
+							debugLog("Processing final chunk", null, "synthesis");
 							lastChunkProcessed = true;
 							await this.audioQueue
 								?.addToQueue(
@@ -453,6 +441,7 @@ export class SpeechControl {
 								.catch(errorRecoveryHandler);
 							ws.close();
 						} else {
+							// debugLog("Processing non-final chunk", null, "synthesis");
 							await this.audioQueue
 								?.addToQueue(
 									arrayBuffer,

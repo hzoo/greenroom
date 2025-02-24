@@ -1,11 +1,12 @@
-import { signal } from "@preact/signals-react";
 import { memo, useRef } from "react";
 import { useSignalEffect, useSignals } from "@preact/signals-react/runtime";
 import { cn } from "@/lib/utils";
-import { isAgentSpeaking, isUserSpeaking } from "@/store/signals";
-
-export const speechDetector = signal<AnalyserNode | null>(null);
-export const wsAudioAnalyzer = signal<AnalyserNode | null>(null);
+import {
+	isAgentSpeaking,
+	isUserSpeaking,
+	speechDetector,
+	wsAudioAnalyzer,
+} from "@/store/signals";
 
 export const AgentCircle = memo(function AgentCircle() {
 	useSignals();
@@ -36,19 +37,6 @@ export const AgentCircle = memo(function AgentCircle() {
 				const detector = speechDetector.peek();
 				if (detector) {
 					detector.getByteFrequencyData(freqData);
-					// Debug: Log frequency data when user is speaking
-					const max = Math.max(...freqData);
-					if (max > 0) {
-						// Log any non-zero data
-						console.log(
-							"User frequency data:",
-							Array.from(freqData.slice(0, 10))
-								.map((v) => v.toString().padStart(3))
-								.join(" "),
-							"Max:",
-							max,
-						);
-					}
 				}
 			}
 

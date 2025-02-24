@@ -24,7 +24,7 @@ import {
 } from "@/store/signals";
 import { cn } from "@/lib/utils";
 import { ChatPanel } from "@/components/ChatPanel";
-import ChatBot from "@/chatbot";
+import { ChatBot } from "@/chatbot";
 import { speechControl } from "@/lib/voice/voiceSetup";
 import { batch } from "@preact/signals-react";
 

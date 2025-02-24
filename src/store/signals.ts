@@ -1,6 +1,6 @@
-import { computed, signal, type Signal } from "@preact/signals-react";
+import { signal, type Signal } from "@preact/signals-react";
 import type { Role } from "@11labs/client";
-import type ChatBot from "@/chatbot";
+import type { ChatBot } from "@/chatbot";
 
 // Debounce helper with proper types
 function debounce<Args extends unknown[], R>(
@@ -71,6 +71,10 @@ export const chatbot = signal<ChatBot | null>(null);
 
 // Latest context signal
 export const latestContext = signal<string>("");
+
+// Speech controls
+export const speechDetector = signal<AnalyserNode | null>(null);
+export const wsAudioAnalyzer = signal<AnalyserNode | null>(null);
 
 // Mock voice chat state
 export const isMockMode = signal(false);

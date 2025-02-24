@@ -1,6 +1,6 @@
 import { signal } from "@preact/signals-react";
 import type { AudioChunk } from "./types";
-import { wsAudioAnalyzer } from "@/components/VoiceChat";
+import { wsAudioAnalyzer } from "@/store/signals";
 
 // Base signals
 export const audioChunks = signal<AudioChunk[]>([]);
