@@ -46,6 +46,7 @@ export const TONE_WORDS = [
 	"supportive",
 	"friendly",
 
+	"fantasy storytelling",
 	"visionary",
 ];
 
@@ -56,6 +57,12 @@ export function getRandomTone(existingTones?: Set<string>): string {
 		: TONE_WORDS;
 
 	// Ensure "visionary" is always the first option if available
+	const fantasyStorytellingIndex = availableTones.indexOf(
+		"fantasy storytelling",
+	);
+	if (fantasyStorytellingIndex !== -1) {
+		return "fantasy storytelling";
+	}
 	const visionaryIndex = availableTones.indexOf("visionary");
 	if (visionaryIndex !== -1) {
 		return "visionary";
